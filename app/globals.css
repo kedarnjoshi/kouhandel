@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Karla:wght@400;700&display=swap');
+:root{--board:#1d2a2c;--board2:#141d1f;--chalk:#f1ede2;--straw:#dcb85c;--barn:#c24a31;--delft:#3a5fa8}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--chalk);font-family:Karla,sans-serif;background:var(--board);background-image:radial-gradient(ellipse at 50% 0,#2b3d40,var(--board2) 70%)}
+main{max-width:1000px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+h1,h2{margin:0;font-family:'Alfa Slab One',serif;font-weight:400;letter-spacing:.01em}
+h1{font-size:2.4rem;color:var(--straw)} h2{font-size:1.2rem}
+p{margin:6px 0}
+button{background:var(--straw);color:#2a2008;border:0;border-radius:6px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}
+button:hover:not(:disabled){filter:brightness(1.1)} button:disabled{opacity:.4;cursor:default}
+button.ghost{background:transparent;color:var(--straw);border:1.5px solid var(--straw)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--delft);outline-offset:2px}
+input{padding:9px;border-radius:6px;border:1.5px solid #ffffff44;background:#0003;color:var(--chalk);font:inherit;width:140px}
+.panel{background:#0000002e;border:1.5px dashed #f1ede24d;border-radius:10px;padding:14px}
+.players{display:flex;gap:10px;flex-wrap:wrap}
+.pl{flex:1;min-width:150px;display:flex;flex-direction:column;gap:8px}
+.pl.turn{border:2px solid var(--barn);border-style:solid}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.card{position:relative;width:84px;aspect-ratio:2/3;border-radius:7px;background:var(--chalk);color:#222;display:grid;place-items:center;box-shadow:0 3px 8px #0006;transition:transform .15s}
+.card.sm{width:44px} .card img{width:100%;height:100%;object-fit:cover;border-radius:7px}
+.card.click{cursor:pointer} .card.sel{transform:translateY(-14px);outline:3px solid var(--straw)} .card.gold{outline:2px solid var(--straw)}
+.fb{font-weight:700;text-align:center;font-size:.75rem;padding:2px}
+.badge{position:absolute;right:-6px;bottom:-6px;background:var(--straw);color:#222;border-radius:10px;padding:1px 6px;font-size:.7rem}
+.center{display:flex;gap:18px;align-items:center;flex-wrap:wrap} .center>.card{width:120px}
+.hand{display:flex;gap:6px;flex-wrap:wrap;padding-top:16px;min-height:130px}
+.log{font-size:.85rem;opacity:.8;margin:0;padding-left:18px}
+.err{color:#ff9d8a;margin:0} .big{font-family:'Alfa Slab One',serif;font-size:2rem;color:var(--straw)}
+.muted{opacity:.7;font-size:.9rem}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
