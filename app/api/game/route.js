@@ -2,8 +2,8 @@ import { Redis } from '@upstash/redis';
 import { newGame, newPlayer, apply, tick, view } from '../../../lib/engine';
 
 export const dynamic = 'force-dynamic';
-const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_KV_REST_API_URL;
+const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN;
 const mem = (globalThis.__kh ||= {}), sets = (globalThis.__khs ||= {}); // local dev fallback when no Redis is configured
 const r = url ? new Redis({ url, token }) : {
   get: async k => (mem[k] ? JSON.parse(mem[k]) : null),
