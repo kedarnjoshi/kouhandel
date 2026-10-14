@@ -1,1 +1,3 @@
-Put card images here: horse.png cow.png pig.png donkey.png sheep.png goat.png dog.png cat.png rooster.png duck.png, 0.png 10.png 50.png 100.png 200.png 500.png
+Card images, file names must be lowercase (the server is case-sensitive):
+Animals (png): horse cow pig donkey sheep goat dog cat rooster duck
+Money (jpg): 0 10 50 100 200 500

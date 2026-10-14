@@ -15,6 +15,7 @@ const create = async (o = {}) => (await post({ type: 'create', name: 'T', public
 const join = async (room, name, code) => (await post({ type: 'join', room, name, code })).body.token;
 const peek = async (room, token = '') => (await get(`?room=${room}&token=${token}`)).body;
 const fill = async (room, names = ['a', 'b', 'c'], code) => { const t = []; for (const n of names) t.push(await join(room, n, code)); return t; };
+const stored = room => { const raw = globalThis.__kh['kh:' + room]; return JSON.parse(raw.slice(raw.indexOf('|') + 1)); };
 
 describe('creating and listing tables', () => {
   // A created public table shows up in the list with its name, 0 players and lobby phase.
@@ -201,8 +202,115 @@ describe('server-side timer', () => {
     const au = (await peek(a, t[0])).turn;
     await post({ type: 'auction', room: a, token: t[au] });
     expect((await post({ type: 'bid', room: a, token: t[(au + 1) % 3], amount: 10 })).status).toBe(200);
-    const key = 'kh:' + a, s = JSON.parse(globalThis.__kh[key]); s.auction.deadline = 0; globalThis.__kh[key] = JSON.stringify(s);
+    const key = 'kh:' + a, [v] = globalThis.__kh[key].split('|', 1), s = stored(a); s.auction.deadline = 0;
+    globalThis.__kh[key] = v + '|' + JSON.stringify(s);
     expect((await peek(a, t[au])).auction.stage).toBe('decide');
-    expect(JSON.parse(globalThis.__kh[key]).auction.stage).toBe('decide');
+    expect(stored(a).auction.stage).toBe('decide');
+  });
+});
+
+describe('storage under concurrency', () => {
+  // Five players joining at the same moment all get a seat (no lost updates).
+  it('simultaneous joins are never lost', async () => {
+    const a = await create();
+    const toks = await Promise.all(['a', 'b', 'c', 'd', 'e'].map(n => join(a, n)));
+    expect(toks.every(Boolean)).toBe(true);
+    expect((await peek(a)).players.map(p => p.name).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect((await post({ type: 'join', room: a, name: 'f' })).body.error).toMatch(/full/);
+  });
+  // Two bids for the same amount at the same moment: exactly one wins, the others are told to bid higher.
+  it('simultaneous equal bids: one wins, the rest are rejected', async () => {
+    const a = await create(); const t = await fill(a, ['a', 'b', 'c', 'd']); await post({ type: 'start', room: a, token: t[0] });
+    const au = (await peek(a)).turn; await post({ type: 'auction', room: a, token: t[au] });
+    const res = await Promise.all(t.filter((_, i) => i !== au).map(token => post({ type: 'bid', room: a, token, amount: 10 })));
+    expect(res.filter(r => r.status === 200)).toHaveLength(1);
+    expect((await peek(a)).auction.high.amt).toBe(10);
+  });
+  // Every saved change bumps the version the client uses to ignore stale responses.
+  it('exposes an increasing version', async () => {
+    const a = await create(); const v1 = (await peek(a)).v; await join(a, 'x');
+    expect((await peek(a)).v).toBe(v1 + 1);
+  });
+});
+
+describe('robustness', () => {
+  // Garbage requests get a clean 400/404 instead of crashing the route.
+  it('handles invalid JSON and bad room ids', async () => {
+    const r = await POST(new Request(U, { method: 'POST', body: '{nope' }));
+    expect(r.status).toBe(400);
+    expect((await get('?room=../../x')).status).toBe(404);
+    expect((await post({ type: 'join', room: { $ne: 1 }, name: 'x' })).body.error).toMatch(/not found/);
+  });
+  // Room ids are short, lowercase and unique.
+  it('creates distinct lowercase ids', async () => {
+    const ids = await Promise.all(Array.from({ length: 30 }, () => create()));
+    expect(new Set(ids).size).toBe(30); ids.forEach(id => expect(id).toMatch(/^[a-z2-9]{6}$/));
+  });
+  // Rooms saved by the previous version (plain JSON, no version prefix) keep working and get upgraded on the next write.
+  it('reads and upgrades rooms saved in the old format', async () => {
+    const old = { name: 'Old', public: true, code: '', phase: 'lobby', players: [], deck: [], donkeys: 0, turn: 0, auction: null, trade: null, log: [] };
+    globalThis.__kh['kh:0ld1d'] = JSON.stringify(old);
+    expect((await peek('0ld1d')).name).toBe('Old');
+    const t = await join('0ld1d', 'x'); expect(t).toBeTruthy();
+    expect(globalThis.__kh['kh:0ld1d']).toMatch(/^1\|/); expect((await peek('0ld1d', t)).me).toBe(0);
+  });
+  // Private codes are trimmed on join just like on create.
+  it('trims the code on join', async () => {
+    const a = await create({ public: false, code: 'k' });
+    expect((await post({ type: 'join', room: a, name: 'x', code: ' k ' })).status).toBe(200);
+  });
+  // The decision time limit is chosen at creation: default 60s, clamped to 30s..5min.
+  it('stores the decision time limit, clamped to 30..300 seconds', async () => {
+    const cases = [[undefined, 60], [10, 30], [90, 90], [9999, 300], ['abc', 60]];
+    for (const [timeout, want] of cases) expect((await peek(await create({ timeout }))).timeout).toBe(want);
+  });
+  // A table can be created with the game log turned off: only the latest event is shown, never the history.
+  it('can hide the game log', async () => {
+    const a = await create({ log: false }), b = await create();
+    for (const r of [a, b]) { const t = await fill(r); await post({ type: 'start', room: r, token: t[0] }); await post({ type: 'auction', room: r, token: t[(await peek(r)).turn] }); }
+    expect((await peek(a)).log).toHaveLength(1); expect((await peek(a)).showLog).toBe(false);
+    expect((await peek(b)).log.length).toBeGreaterThan(1); expect((await peek(b)).showLog).toBe(true);
+  });
+});
+
+describe('lobby presence', () => {
+  const seen = room => globalThis.__kh['kh:' + room + ':seen'];
+  // Leaving from the lobby frees the seat at once.
+  it('leave frees the seat', async () => {
+    const a = await create(); const [t0] = await fill(a, ['a', 'b']);
+    expect((await post({ type: 'leave', room: a, token: t0 })).status).toBe(200);
+    expect((await peek(a)).players.map(p => p.name)).toEqual(['b']);
+  });
+  // A player who stops polling for too long is removed from the lobby; active players stay.
+  it('drops players who went silent', async () => {
+    const a = await create(); const [t0, t1] = await fill(a, ['a', 'b']);
+    seen(a)[t0] = String(Date.now() - 100000);
+    const v = await peek(a, t1);
+    expect(v.players.map(p => p.name)).toEqual(['b']); expect(v.me).toBe(0);
+    expect(v.log[0]).toMatch(/a left/);
+  });
+  // Closing the tab ("bye") frees the seat after a short grace period, unless the player polls again (refresh).
+  it('bye frees the seat after the grace period, a refresh keeps it', async () => {
+    const a = await create(); const [t0, t1] = await fill(a, ['a', 'b']);
+    await post({ type: 'bye', room: a, token: t0 });
+    expect((await peek(a, t1)).players).toHaveLength(2); // still inside the grace period
+    await peek(a, t0); // the page came back (refresh)
+    seen(a)[t0] = String(Number(seen(a)[t0]) - 10000);
+    expect((await peek(a, t1)).players).toHaveLength(2);
+    await post({ type: 'bye', room: a, token: t0 });
+    seen(a)[t0] = String(Number(seen(a)[t0]) - 10000); // grace period passes
+    expect((await peek(a, t1)).players.map(p => p.name)).toEqual(['b']);
+  });
+  // Presence never removes anyone once the game is running.
+  it('never removes players mid-game', async () => {
+    const a = await create(); const t = await fill(a); await post({ type: 'start', room: a, token: t[0] });
+    seen(a)[t[1]] = '0';
+    expect((await peek(a, t[0])).players).toHaveLength(3);
+  });
+  // The public list also reflects players who left.
+  it('the table list drops silent players', async () => {
+    const a = await create(); const [t0] = await fill(a, ['a', 'b']);
+    seen(a)[t0] = '0';
+    expect((await get('')).body[0].players).toBe(1);
   });
 });
