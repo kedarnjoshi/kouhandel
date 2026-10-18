@@ -648,6 +648,11 @@ describe('kicking and leaving mid-game', () => {
     s.players[1].money = [10]; tick(s, s.due);
     expect(s.phase).toBe('turn'); expect(s.players[0].animals.cow).toBe(1); expect(s.log[0]).toMatch(/cannot pay/);
   });
+  // Finished games remember when they ended (used to drop them from the public list).
+  it('records when the game ended', () => {
+    const s = game(); act(s, 0, { type: 'end' }, 5000); expect(s.endedAt).toBe(5000);
+    const t = game(3, ['duck']); act(t, 0, { type: 'auction' }, 0); tick(t, 20000); expect(t.phase).toBe('over'); expect(t.endedAt).toBe(20000);
+  });
   // Kicking the highest bidder starts the bidding over.
   it('kicking the highest bidder restarts the bidding', () => {
     const s = open(); act(s, 1, { type: 'bid', amount: 30 }); expire(s);

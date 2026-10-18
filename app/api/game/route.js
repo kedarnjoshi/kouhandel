@@ -8,8 +8,9 @@ export const runtime = 'nodejs';
 const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 // Redis deletes rooms by itself: a game expires 10 minutes after its last move or player heartbeat (so a table
-// everyone left ends and disappears), a finished game is kept for an hour so players can see the scores.
-const ACTIVE_TTL = 600, OVER_TTL = 3600;
+// everyone left ends and disappears). A finished game is deleted 15 minutes after it ended, so players can still
+// look at the scores, and it leaves the public list after 2 minutes.
+const ACTIVE_TTL = 600, OVER_TTL = 900, LISTED_AFTER_END = 120000;
 const ttlFor = s => (s.phase === 'over' ? OVER_TTL : ACTIVE_TTL);
 
 // A room is stored as "<version>|<json>". A write only lands if the version is still the one we read
@@ -43,7 +44,7 @@ function redisStore() {
     },
     hdel: (k, ...f) => r.hdel(k, ...f),
     expire: (k, sec) => r.expire(k, sec),
-    beat: (room, seen, f, val, ttl) => r.pipeline().hset(seen, { [f]: String(val) }).expire(seen, ttl).expire(room, ttl).exec(), // one HTTP call
+    beat: (room, seen, f, val, ttl) => { const p = r.pipeline().hset(seen, { [f]: String(val) }).expire(seen, ACTIVE_TTL); if (ttl) p.expire(room, ttl); return p.exec(); }, // one HTTP call
   };
 }
 function memStore() { // local dev fallback when no Redis is configured (single process only)
@@ -65,7 +66,7 @@ function memStore() { // local dev fallback when no Redis is configured (single 
     hgetall: async k => ({ ...(kv[k] || {}) }),
     hdel: async (k, ...f) => { for (const x of f) delete kv[k]?.[x]; },
     expire,
-    beat: async (room, seen, f, val, ttl) => { (kv[seen] ||= {})[f] = String(val); await expire(seen, ttl); await expire(room, ttl); },
+    beat: async (room, seen, f, val, ttl) => { (kv[seen] ||= {})[f] = String(val); await expire(seen, ACTIVE_TTL); if (ttl) await expire(room, ttl); },
   };
 }
 const store = url ? redisStore() : memStore();
@@ -141,6 +142,7 @@ export async function GET(req) {
       for (let i = 0; i < ids.length; i++) {
         const d = decode(raws[i]);
         if (!d) { await db().srem('rooms', ids[i]); continue; }
+        if (d.s.phase === 'over' && !(now - d.s.endedAt < LISTED_AFTER_END)) continue; // finished tables leave the list after 2 minutes
         out.push({ id: ids[i], name: d.s.name, players: d.s.players.filter(p => !p.out).length, phase: d.s.phase });
       }
       return Response.json(out);
@@ -148,7 +150,7 @@ export async function GET(req) {
     let { v, s } = await load(room);
     const pi = find(s, tok);
     if (q.get('hb') && pi >= 0 && !s.players[pi].out) { // heartbeat from a seated player
-      await db().beat(K(room), SEEN(room), tok, now, ttlFor(s));
+      await db().beat(K(room), SEEN(room), tok, now, s.phase === 'over' ? 0 : ACTIVE_TTL); // a finished game is not kept alive by people looking at it
       if (s.phase === 'lobby') ({ v, s } = (await pruneLobby(room, s, now)) || { v, s });
     }
     const before = JSON.stringify(s);

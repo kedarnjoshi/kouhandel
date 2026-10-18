@@ -334,13 +334,30 @@ describe('lobby presence', () => {
 describe('automatic cleanup', () => {
   const exp = room => globalThis.__khx['kh:' + room];
   // Rooms expire 10 minutes after the last move or heartbeat; finished games are kept for an hour.
-  it('gives rooms a 10 minute lifetime, renewed by heartbeats, and 1 hour once finished', async () => {
+  it('gives rooms a 10 minute lifetime, renewed by heartbeats, and 15 minutes once finished', async () => {
     const a = await create(); const t = await fill(a);
     expect(exp(a) - Date.now()).toBeGreaterThan(590000); expect(exp(a) - Date.now()).toBeLessThanOrEqual(600000);
     globalThis.__khx['kh:' + a] = Date.now() + 1000;
     await get(`?room=${a}&token=${t[0]}&hb=1`); expect(exp(a) - Date.now()).toBeGreaterThan(590000);
     await post({ type: 'start', room: a, token: t[0] }); await post({ type: 'end', room: a, token: t[0] });
-    expect(exp(a) - Date.now()).toBeGreaterThan(3590000);
+    expect(exp(a) - Date.now()).toBeGreaterThan(890000); expect(exp(a) - Date.now()).toBeLessThanOrEqual(900000);
+  });
+  // Players looking at the final scores do not keep a finished game alive.
+  it('heartbeats do not extend a finished game', async () => {
+    const a = await create(); const t = await fill(a);
+    await post({ type: 'start', room: a, token: t[0] }); await post({ type: 'end', room: a, token: t[0] });
+    globalThis.__khx['kh:' + a] = Date.now() + 5000;
+    await get(`?room=${a}&token=${t[1]}&hb=1`); expect(exp(a) - Date.now()).toBeLessThanOrEqual(5000);
+  });
+  // A finished table shows in the public list for 2 minutes, then disappears from it.
+  it('drops finished tables from the public list after 2 minutes', async () => {
+    const a = await create(); const t = await fill(a);
+    await post({ type: 'start', room: a, token: t[0] }); await post({ type: 'end', room: a, token: t[0] });
+    expect((await get('')).body.map(x => x.phase)).toEqual(['over']);
+    const key = 'kh:' + a, [v] = globalThis.__kh[key].split('|', 1), st = stored(a); st.endedAt = Date.now() - 121000;
+    globalThis.__kh[key] = v + '|' + JSON.stringify(st);
+    expect((await get('')).body).toEqual([]);
+    expect((await peek(a)).phase).toBe('over'); // still reachable by its link until it expires
   });
   // When everyone has left (no heartbeats), the room expires: it is gone and drops off the public list.
   it('ends and removes a game everyone left', async () => {
