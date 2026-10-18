@@ -3,7 +3,7 @@ import { ANIMALS, newGame, newPlayer, apply, tick, view, targets, score, cheapes
 
 const TYPES = Object.keys(ANIMALS);
 const START = [0, 0, 10, 10, 10, 10, 50];
-const MULE_PAY = [50, 100, 200, 500];
+const DONKEY_PAY = [50, 100, 200, 500];
 const sum = a => a.reduce((x, y) => x + y, 0);
 const sorted = a => [...a].sort((x, y) => x - y);
 const total = s => s.players.reduce((n, p) => n + sum(p.money), 0);
@@ -19,9 +19,9 @@ const snapshot = s => JSON.stringify(s);
 const expire = s => tick(s, s.auction.deadline); // only the timer ends bidding
 
 describe('setup', () => {
-  // Animal point values used at this table (horse 1000 down to chicken 10).
-  it('has the agreed animal values', () => {
-    expect(ANIMALS).toEqual({ horse: 1000, cow: 800, pig: 650, mule: 500, goat: 350, sheep: 250, dog: 160, cat: 90, duck: 40, chicken: 10 });
+  // Animal point values match the official table (horse 1000 down to duck 10).
+  it('has the standard animal values', () => {
+    expect(ANIMALS).toEqual({ horse: 1000, cow: 800, pig: 650, donkey: 500, sheep: 400, goat: 250, dog: 160, cat: 90, rooster: 50, duck: 10 });
   });
   // Starting deals each player 0,0,10x4,50 (90 total), builds 10 types x 4 cards, and moves to the turn phase.
   it('deals 90 to everyone, builds a 40-card deck and starts the game', () => {
@@ -54,13 +54,13 @@ describe('auction: opening and bidding', () => {
   it('only the player whose turn it is can auction', () => expect(() => act(game(), 1, { type: 'auction' })).toThrow(/Not your turn/));
   // Auctioning is rejected when no cards are left in the deck.
   it('cannot auction from an empty deck', () => expect(() => act(game(3, []), 0, { type: 'auction' })).toThrow(/empty/));
-  // Each higher bid becomes the high bid and resets the deadline to 10s from that moment.
-  it('accepts raising bids and resets the timer to 10s on each', () => {
+  // Each higher bid becomes the high bid and resets the deadline to 20s from that moment.
+  it('accepts raising bids and restarts the 20s timer on each', () => {
     const s = open();
     act(s, 1, { type: 'bid', amount: 30 }, 4000);
-    expect(s.auction.high).toEqual({ p: 1, amt: 30 }); expect(s.auction.deadline).toBe(14000);
+    expect(s.auction.high).toEqual({ p: 1, amt: 30 }); expect(s.auction.deadline).toBe(24000);
     act(s, 2, { type: 'bid', amount: 40 }, 5000);
-    expect(s.auction.high).toEqual({ p: 2, amt: 40 }); expect(s.auction.deadline).toBe(15000);
+    expect(s.auction.high).toEqual({ p: 2, amt: 40 }); expect(s.auction.deadline).toBe(25000);
   });
   // A bid sent as a string (from the text input) is accepted as a number.
   it('accepts a bid sent as a numeric string (form input)', () => {
@@ -88,13 +88,13 @@ describe('auction: opening and bidding', () => {
     expect(() => act(s, pi, { type: 'bid', amount })).toThrow(re);
     expect(snapshot(s)).toBe(before);
   });
-  // The auctioneer can add 5s once per auction, never above 20s left; nobody else can extend.
-  it('lets the auctioneer add 5s once, capped at 20s left', () => {
+  // The auctioneer can add 5s, but the clock never goes above 20s; nobody else can extend.
+  it('lets the auctioneer add 5s, capped at 20s left', () => {
     const s = open(); // deadline 20000
-    act(s, 0, { type: 'extend' }, 10000); expect(s.auction.deadline).toBe(25000); // 10s left -> 15s
-    expect(() => act(s, 0, { type: 'extend' }, 11000)).toThrow(/once/);
-    const t = open(); act(t, 0, { type: 'extend' }, 1000); expect(t.auction.deadline).toBe(21000); // 19s left -> capped at 20s
-    expect(() => act(open(), 1, { type: 'extend' })).toThrow(/Auctioneer only/);
+    act(s, 0, { type: 'extend' }, 1000); expect(s.auction.deadline).toBe(21000); // 19s left -> capped at 20s
+    act(s, 0, { type: 'extend' }, 10000); expect(s.auction.deadline).toBe(26000); // 11s left -> 16s
+    act(s, 0, { type: 'extend' }, 10000); expect(s.auction.deadline).toBe(30000); // 16s left -> capped at 20s
+    expect(() => act(s, 1, { type: 'extend' })).toThrow(/Auctioneer only/);
   });
   // Nobody, not even the auctioneer, can end bidding early: only the timer closes it.
   it('does not let anyone close bidding early', () => {
@@ -119,13 +119,13 @@ describe('auction: timer', () => {
   });
   // Bidding stays open until the deadline and closes at exactly the deadline, moving to the decision stage.
   it('does not expire before the deadline, and expires exactly at it', () => {
-    const s = open(); act(s, 1, { type: 'bid', amount: 20 }); // deadline 11000
-    tick(s, 10999); expect(s.auction.stage).toBe('bidding');
-    tick(s, 11000); expect(s.auction.stage).toBe('decide');
+    const s = open(); act(s, 1, { type: 'bid', amount: 20 }); // deadline 21000
+    tick(s, 20999); expect(s.auction.stage).toBe('bidding');
+    tick(s, 21000); expect(s.auction.stage).toBe('decide');
   });
   // Bids and extensions arriving after the deadline are rejected against the closed auction.
   it('rejects bids that arrive after expiry', () => {
-    const s = open(); act(s, 1, { type: 'bid', amount: 20 }); // deadline 11000
+    const s = open(); act(s, 1, { type: 'bid', amount: 20 }); // deadline 21000
     expect(() => act(s, 2, { type: 'bid', amount: 30 }, 22000)).toThrow(/auctioneer decides/);
     expect(() => act(s, 0, { type: 'extend' }, 22000)).toThrow(/Not allowed/);
   });
@@ -202,81 +202,76 @@ describe('auction: sell, buy and payment', () => {
   });
 });
 
-describe('money mules', () => {
-  // Messages call it a money mule.
-  it('calls the mule a money mule in the log', () => {
-    const s = game(3, ['mule']); act(s, 0, { type: 'auction' });
-    expect(s.log.slice(0, 2)).toEqual(['P0 auctions a money mule', 'Money mule! Everyone receives 50']);
-  });
-  // The four money mules pay all players 50, 100, 200, then 500 when drawn, and are then auctioned like any animal.
+describe('donkeys', () => {
+  // The four donkeys pay all players 50, 100, 200, then 500 when drawn, and are then auctioned like any animal.
   it('pay everyone 50, 100, 200 then 500, and are still auctioned', () => {
-    const s = game(4, ['mule', 'mule', 'mule', 'mule']);
+    const s = game(4, ['donkey', 'donkey', 'donkey', 'donkey']);
     let cum = 0;
-    MULE_PAY.forEach((amt, i) => {
+    DONKEY_PAY.forEach((amt, i) => {
       cum += amt;
       act(s, s.turn, { type: 'auction' });
-      expect(s.auction.type).toBe('mule'); expect(s.mules).toBe(i + 1);
+      expect(s.auction.type).toBe('donkey'); expect(s.donkeys).toBe(i + 1);
       s.players.forEach(p => expect(sum(p.money)).toBe(90 + cum));
       expire(s);
     });
-    expect(s.players.reduce((n, p) => n + p.animals.mule, 0)).toBe(4);
+    expect(s.players.reduce((n, p) => n + p.animals.donkey, 0)).toBe(4);
   });
-  // The money mule payout counts towards what players can bid in that same auction.
+  // The donkey payout counts towards what players can bid in that same auction.
   it('can be bid on with the money just received', () => {
-    const s = game(3, ['mule']); act(s, 0, { type: 'auction' });
+    const s = game(3, ['donkey']); act(s, 0, { type: 'auction' });
     act(s, 1, { type: 'bid', amount: 140 }); expect(s.auction.high.amt).toBe(140);
   });
 });
 
-describe('koehandel: starting one', () => {
+describe('cow trade: challenges', () => {
   const setup = (a = 1, b = 1) => { const s = game(3); give(s, 0, { horse: a }); give(s, 1, { horse: b }); return s; };
-  const start = (s, target = 1, animal = 'horse') => act(s, 0, { type: 'koehandel', target, animal }); // player 0 starts a koehandel
+  const challenge = (s, target = 1, animal = 'horse') => act(s, 0, { type: 'challenge', target, animal });
 
   // targets() returns exactly the (player, animal) pairs both sides share.
-  it('lists exactly the possible koehandels', () => {
+  it('lists exactly the legal challenges', () => {
     const s = setup(); give(s, 2, { cow: 1 }); give(s, 0, { cow: 1 });
-    expect(targets(s, 0)).toEqual(expect.arrayContaining([{ p: 1, type: 'horse', count: 1 }, { p: 2, type: 'cow', count: 1 }]));
+    expect(targets(s, 0)).toEqual(expect.arrayContaining([{ p: 1, type: 'horse' }, { p: 2, type: 'cow' }]));
     expect(targets(s, 0)).toHaveLength(2);
   });
-  // A koehandel is rejected if the other player does not hold that animal.
+  // A challenge is rejected if the target does not hold that animal.
   it('needs a shared animal type', () => {
     const s = game(); give(s, 0, { horse: 1 }); give(s, 1, { cow: 1 });
-    expect(() => start(s)).toThrow(/cannot start a koehandel/);
+    expect(() => challenge(s)).toThrow(/cannot challenge/);
   });
-  // A koehandel is rejected if the starter does not hold that animal.
-  it('needs the starter to own that type too', () => {
-    const s = game(); give(s, 1, { horse: 1 }); expect(() => start(s)).toThrow(/cannot start a koehandel/);
+  // A challenge is rejected if the challenger does not hold that animal.
+  it('needs the challenger to own that type too', () => {
+    const s = game(); give(s, 1, { horse: 1 }); expect(() => challenge(s)).toThrow(/cannot challenge/);
   });
-  // You cannot start a koehandel with yourself or a player that does not exist.
-  it('rejects koehandels with yourself and unknown players', () => {
+  // You cannot challenge yourself or a player that does not exist.
+  it('rejects self-challenges and unknown players', () => {
     const s = setup();
-    expect(() => start(s, 0)).toThrow(/cannot start a koehandel/);
-    expect(() => start(s, 9)).toThrow(/cannot start a koehandel/);
+    expect(() => challenge(s, 0)).toThrow(/cannot challenge/);
+    expect(() => challenge(s, 9)).toThrow(/cannot challenge/);
   });
-  // Only the player on turn can start a koehandel.
+  // Only the player on turn can challenge.
   it('only works on your own turn', () => {
-    const s = setup(); expect(() => act(s, 1, { type: 'koehandel', target: 0, animal: 'horse' })).toThrow(/Not your turn/);
+    const s = setup(); expect(() => act(s, 1, { type: 'challenge', target: 0, animal: 'horse' })).toThrow(/Not your turn/);
   });
   // Option A: the number of animals traded is the smaller of the two counts (1v1, 2v1, 2v2, 3v1).
   it.each([[1, 1, 1], [2, 1, 1], [2, 2, 2], [3, 1, 1]])('with %i vs %i animals puts %i at stake', (a, b, n) => {
-    const s = setup(a, b); start(s);
+    const s = setup(a, b); challenge(s);
     expect(s.phase).toBe('trade'); expect(s.trade).toMatchObject({ a: 0, b: 1, type: 'horse', count: n });
   });
 });
 
-describe('koehandel: offers and resolution', () => {
-  const setup = (a = 1, b = 1) => { const s = game(3); give(s, 0, { horse: a }); give(s, 1, { horse: b }); act(s, 0, { type: 'koehandel', target: 1, animal: 'horse' }); return s; };
+describe('cow trade: bidding and resolution', () => {
+  const setup = (a = 1, b = 1) => { const s = game(3); give(s, 0, { horse: a }); give(s, 1, { horse: b }); act(s, 0, { type: 'challenge', target: 1, animal: 'horse' }); return s; };
   const bids = (s, c0, c1) => { act(s, 0, { type: 'tradebid', cards: c0 }); act(s, 1, { type: 'tradebid', cards: c1 }); };
 
   // Higher bid wins the animal, and the two players swap the bid cards they put down.
-  it('the starter wins with the higher bid; bids are swapped', () => {
+  it('challenger wins with the higher bid; bids are swapped', () => {
     const s = setup(); bids(s, [50], [10, 10]);
     expect(s.players[0].animals.horse).toBe(2); expect(s.players[1].animals.horse).toBe(0);
     expect(sorted(s.players[0].money)).toEqual(sorted([0, 0, 10, 10, 10, 10, 10, 10]));
     expect(sorted(s.players[1].money)).toEqual(sorted([0, 0, 10, 10, 50, 50]));
     expect(s.phase).toBe('turn'); expect(s.turn).toBe(1); expect(s.trade).toBeNull();
   });
-  // The other player can win and take the animal from the starter.
+  // The challenged player can win and take the animal from the challenger.
   it('defender wins with the higher bid', () => {
     const s = setup(); bids(s, [10], [50]);
     expect(s.players[1].animals.horse).toBe(2); expect(s.players[0].animals.horse).toBe(0);
@@ -288,8 +283,8 @@ describe('koehandel: offers and resolution', () => {
     bids(s, [50], [10]);
     expect(s.players[0].animals.horse).toBe(2);
   });
-  // Official rule: a second tie in a row gives the starter the animals for free, with no money changing hands.
-  it('a second tie gives the starter the animals for free', () => {
+  // Official rule: a second tie in a row gives the challenger the animals for free, with no money changing hands.
+  it('a second tie gives the challenger the animals for free', () => {
     const s = setup(2, 2); const m0 = sorted(s.players[0].money), m1 = sorted(s.players[1].money);
     bids(s, [10], [10]); expect(s.phase).toBe('trade');
     bids(s, [0], []);
@@ -308,21 +303,21 @@ describe('koehandel: offers and resolution', () => {
     const s = setup(); bids(s, [50], [10, 10]);
     expect(s.log[0]).not.toMatch(/50|20/);
   });
-  // The starter always offers first; the other player has to wait for that offer.
-  it('the other player cannot bid before the starter', () => {
+  // The challenger always offers first; the defender has to wait for that offer.
+  it('the defender cannot bid before the challenger', () => {
     const s = setup();
-    expect(() => act(s, 1, { type: 'tradebid', cards: [10] })).toThrow(/Wait for P0/);
-    expect(() => act(s, 1, { type: 'accept' })).toThrow(/Wait for P0/);
+    expect(() => act(s, 1, { type: 'tradebid', cards: [10] })).toThrow(/challenger/);
+    expect(() => act(s, 1, { type: 'accept' })).toThrow(/challenger/);
     act(s, 0, { type: 'tradebid', cards: [10] }); act(s, 1, { type: 'tradebid', cards: [50] });
     expect(s.players[1].animals.horse).toBe(2);
   });
-  // Everyone sees how many cards the starter offered, but never their values.
+  // Everyone sees how many cards the challenger offered, but never their values.
   it('shows the number of offered cards, not their value', () => {
     const s = setup(); expect(view(s, 1).trade.offer).toBeNull();
     act(s, 0, { type: 'tradebid', cards: [10, 0, 50] });
     for (const pi of [1, 2, -1]) { const v = view(s, pi); expect(v.trade.offer).toBe(3); expect(JSON.stringify(v.trade)).not.toContain('50'); }
   });
-  // The other player may accept the offer: they hand over the animals and keep the starter's cards.
+  // The defender may accept the offer: they hand over the animals and keep the challenger's cards.
   it('the defender can accept the offer', () => {
     const s = setup(2, 2); const before = total(s);
     act(s, 0, { type: 'tradebid', cards: [10, 0] }); act(s, 1, { type: 'accept' });
@@ -335,7 +330,7 @@ describe('koehandel: offers and resolution', () => {
   it('only the defender can accept', () => {
     const s = setup(); act(s, 0, { type: 'tradebid', cards: [10] });
     expect(() => act(s, 0, { type: 'accept' })).toThrow();
-    expect(() => act(s, 2, { type: 'accept' })).toThrow(/not in this koehandel/);
+    expect(() => act(s, 2, { type: 'accept' })).toThrow(/not in this trade/);
   });
   // Bidding no cards counts as 0 and is allowed.
   it('allows an empty (zero) bid', () => {
@@ -349,12 +344,12 @@ describe('koehandel: offers and resolution', () => {
   it('conserves money', () => {
     const s = setup(); const before = total(s); bids(s, [50], [10, 10]); expect(total(s)).toBe(before);
   });
-  // Starter holds 2, other player 1, starter wins: only one animal moves (3 vs 0).
-  it('unequal counts: only the smaller count moves (starter has more, wins)', () => {
+  // Challenger holds 2, defender 1, challenger wins: only one animal moves (3 vs 0).
+  it('unequal counts: only the smaller count moves (challenger has more, wins)', () => {
     const s = setup(2, 1); bids(s, [50], [10]);
     expect(s.players[0].animals.horse).toBe(3); expect(s.players[1].animals.horse).toBe(0);
   });
-  // Starter holds 2, other player 1, other player wins: only one animal moves (1 vs 2).
+  // Challenger holds 2, defender 1, defender wins: only one animal moves (1 vs 2).
   it('unequal counts: only the smaller count moves (defender wins)', () => {
     const s = setup(2, 1); bids(s, [10], [50]);
     expect(s.players[1].animals.horse).toBe(2); expect(s.players[0].animals.horse).toBe(1);
@@ -379,7 +374,7 @@ describe('koehandel: offers and resolution', () => {
   // Only the two traders can bid, each once, using cards they actually hold.
   it('rejects bids from non-participants, double bids and cards not held', () => {
     const s = setup();
-    expect(() => act(s, 2, { type: 'tradebid', cards: [] })).toThrow(/not in this koehandel/);
+    expect(() => act(s, 2, { type: 'tradebid', cards: [] })).toThrow(/not in this trade/);
     expect(() => act(s, 0, { type: 'tradebid', cards: [500] })).toThrow(/do not have/);
     expect(() => act(s, 0, { type: 'tradebid', cards: [50, 50] })).toThrow(/do not have/);
     expect(() => act(s, 0, { type: 'tradebid', cards: null })).toThrow();
@@ -410,7 +405,7 @@ describe('turn order and game end', () => {
     expect(s.phase).toBe('turn'); expect(s.turn).toBe(1);
     expect(() => act(s, 1, { type: 'auction' })).toThrow(/empty/);
   });
-  // With an empty deck the turn skips players who cannot start a koehandel.
+  // With an empty deck the turn skips players who have no valid challenge.
   it('skips players who cannot trade once the deck is empty', () => {
     const s = game(3, ['duck']); give(s, 2, { duck: 1 });
     act(s, 0, { type: 'auction' }); expire(s); // p0 now holds a duck, p2 too; p1 has nothing
@@ -431,25 +426,26 @@ describe('turn order and game end', () => {
     const s = open(); act(s, 0, { type: 'end' }); expect(s.auction).toBeNull(); expect(s.phase).toBe('over');
   });
   // In the lobby a player can give up their seat; if the host leaves the next player becomes host.
-  it('lets players leave their seat in the lobby', () => {
+  it('lets players leave in the lobby only', () => {
     const s = lobby(3); act(s, 0, { type: 'leave' });
     expect(s.players.map(p => p.name)).toEqual(['P1', 'P2']);
+    expect(() => act(game(), 1, { type: 'leave' })).toThrow(/lobby/);
   });
-  // A koehandel target must be a real player index (not a string or object).
-  it('rejects non-integer koehandel targets', () => {
+  // A challenge target must be a real player index (not a string or object).
+  it('rejects non-integer challenge targets', () => {
     const s = game(); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 });
-    expect(() => act(s, 0, { type: 'koehandel', target: '1', animal: 'horse' })).toThrow(/cannot start a koehandel/);
+    expect(() => act(s, 0, { type: 'challenge', target: '1', animal: 'horse' })).toThrow(/cannot challenge/);
   });
   // Nothing can be done after the game is over.
   it('allows no actions once the game is over', () => {
     const s = game(); act(s, 0, { type: 'end' });
     expect(() => act(s, 0, { type: 'auction' })).toThrow(/Not allowed/);
-    expect(() => act(s, 0, { type: 'koehandel', target: 1, animal: 'horse' })).toThrow(/Not allowed/);
+    expect(() => act(s, 0, { type: 'challenge', target: 1, animal: 'horse' })).toThrow(/Not allowed/);
   });
 });
 
 describe('private money notices', () => {
-  const setup = () => { const s = game(3); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 }); act(s, 0, { type: 'koehandel', target: 1, animal: 'horse' }); return s; };
+  const setup = () => { const s = game(3); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 }); act(s, 0, { type: 'challenge', target: 1, animal: 'horse' }); return s; };
   // After a cow trade each trader is told exactly which cards they got and gave; nobody else sees it.
   it('tells both traders what they received and gave', () => {
     const s = setup(); act(s, 0, { type: 'tradebid', cards: [50] }); act(s, 1, { type: 'tradebid', cards: [10, 10] });
@@ -478,64 +474,53 @@ describe('private money notices', () => {
 });
 
 describe('decision timer', () => {
-  const T = 30000; // default limit
-  // Starting the game puts the first player on the clock; the limit defaults to 30s and is clamped to 10s..2min.
+  const T = 60000; // default limit
+  // Starting the game puts the first player on the clock; the limit defaults to 60s and is clamped to 30..300.
   it('puts the player on turn on the clock', () => {
     const s = game(); act(s, 0, { type: 'end' }); expect(s.due).toBeNull();
     const g = lobby(3); apply(g, 0, { type: 'start' }, 5000); expect(g.due).toBe(5000 + T);
-    expect([clampTimeout(undefined), clampTimeout(5), clampTimeout(45), clampTimeout(1e6), clampTimeout('x')]).toEqual([30, 10, 45, 120, 30]);
+    expect([clampTimeout(undefined), clampTimeout(5), clampTimeout(120), clampTimeout(1e6), clampTimeout('x')]).toEqual([60, 30, 120, 300, 60]);
     expect(newGame({ timeout: 45 }).timeout).toBe(45);
   });
-  // Doing nothing on your turn skips it.
-  it('turn timeout skips the turn', () => {
+  // Doing nothing on your turn auctions the next animal for you.
+  it('turn timeout auctions automatically', () => {
     const s = game(3, ['cow']); s.due = 2000;
-    tick(s, 1999); expect(s.turn).toBe(0);
-    tick(s, 2000); expect(s.phase).toBe('turn'); expect(s.turn).toBe(1); expect(s.deck).toEqual(['cow']);
-    expect(s.due).toBe(2000 + T); expect(s.log[0]).toMatch(/P0 ran out of time and skips the turn/);
+    tick(s, 1999); expect(s.phase).toBe('turn');
+    tick(s, 2000); expect(s.phase).toBe('auction'); expect(s.auction).toMatchObject({ type: 'cow', auctioneer: 0 });
+    expect(s.due).toBeNull(); // bidding uses its own 10s timer
+    expect(s.log[1]).toMatch(/ran out of time/);
   });
-  // With an empty deck the skip also passes over players who cannot koehandel.
-  it('turn timeout with an empty deck skips to the next player who can koehandel', () => {
-    const s = game(3, []); give(s, 0, { horse: 1 }); give(s, 2, { horse: 1 }); s.due = 2000;
-    tick(s, 2000); expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
+  // With an empty deck, a player who does nothing just loses their turn.
+  it('turn timeout with an empty deck skips the player', () => {
+    const s = game(3, []); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 }); s.due = 2000;
+    tick(s, 2000); expect(s.phase).toBe('turn'); expect(s.turn).toBe(1); expect(s.due).toBe(2000 + T);
   });
-  // An auctioneer who does not decide buys (if they can afford it); a payer who does not pay pays the cheapest way.
-  it('decide timeout makes the auctioneer buy, pay timeout pays the smallest covering amount', () => {
+  // An auctioneer who does not decide sells to the highest bidder; a payer who does not pay pays the cheapest way.
+  it('decide timeout sells, pay timeout pays the smallest covering amount', () => {
     const s = open(['cow', 'pig']); act(s, 1, { type: 'bid', amount: 30 }, 1000);
-    tick(s, 11000); expect(s.auction.stage).toBe('decide'); expect(s.due).toBe(11000 + T);
-    tick(s, 11000 + T); expect(s.auction).toMatchObject({ stage: 'pay', payer: 0, payee: 1 }); expect(s.due).toBe(11000 + 2 * T);
-    tick(s, 11000 + 2 * T);
-    expect(s.players[0].animals.cow).toBe(1); expect(sorted(s.players[0].money)).toEqual([0, 0, 10, 50]);
-    expect(sorted(s.players[1].money)).toEqual(sorted([...START, 10, 10, 10]));
+    tick(s, 21000); expect(s.auction.stage).toBe('decide'); expect(s.due).toBe(21000 + T);
+    tick(s, 21000 + T); expect(s.auction).toMatchObject({ stage: 'pay', payer: 1, payee: 0 }); expect(s.due).toBe(21000 + 2 * T);
+    tick(s, 21000 + 2 * T);
+    expect(s.players[1].animals.cow).toBe(1); expect(sorted(s.players[1].money)).toEqual([0, 0, 10, 50]);
     expect(s.phase).toBe('turn'); expect(s.turn).toBe(1);
   });
-  // An auctioneer who cannot afford to buy sells instead.
-  it('decide timeout sells when the auctioneer cannot afford to buy', () => {
-    const s = open(['cow', 'pig']); s.players[0].money = [10]; act(s, 1, { type: 'bid', amount: 30 }, 1000);
-    tick(s, 11000); tick(s, 11000 + T); expect(s.auction).toMatchObject({ stage: 'pay', payer: 1, payee: 0 });
-  });
-  // The player who started a koehandel and does not offer offers nothing; the other player who does not answer accepts.
-  it('koehandel timeouts: no offer means 0 cards, no answer means accept', () => {
+  // A challenger who does not offer offers nothing; a defender who does not answer accepts.
+  it('trade timeouts: no offer means an empty offer, no answer means accept', () => {
     const s = game(3); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 });
-    act(s, 0, { type: 'koehandel', target: 1, animal: 'horse' }, 1000); expect(s.due).toBe(1000 + T);
+    act(s, 0, { type: 'challenge', target: 1, animal: 'horse' }, 1000); expect(s.due).toBe(1000 + T);
     tick(s, 1000 + T); expect(s.trade.bids).toEqual({ 0: [] }); expect(s.due).toBe(1000 + 2 * T);
     tick(s, 1000 + 2 * T); expect(s.players[0].animals.horse).toBe(2); expect(s.phase).toBe('turn');
   });
   // Every move hands the clock to the next decision with a fresh limit.
   it('restarts the clock after each move', () => {
     const s = game(3); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 });
-    act(s, 0, { type: 'koehandel', target: 1, animal: 'horse' }, 1000);
+    act(s, 0, { type: 'challenge', target: 1, animal: 'horse' }, 1000);
     act(s, 0, { type: 'tradebid', cards: [10] }, 5000); expect(s.due).toBe(5000 + T);
-  });
-  // Missing moves counts strikes; making any move clears them.
-  it('counts missed moves in a row and forgives them after a move', () => {
-    const s = game(3, ['cow', 'pig', 'duck']); s.due = 1000;
-    tick(s, 1000); expect(s.players[0].strikes).toBe(1);
-    act(s, 1, { type: 'auction' }, 2000); expect(s.players[1].strikes).toBe(0);
   });
   // A table that nobody looked at for ages only advances one step per look (no runaway chain of auto moves).
   it('a very late look does not cascade through many steps', () => {
     const s = game(3, ['cow', 'pig']); s.due = 1000;
-    tick(s, 1e9); expect(s.phase).toBe('turn'); expect(s.turn).toBe(1); expect(s.due).toBe(1e9 + 30000);
+    tick(s, 1e9); expect(s.phase).toBe('auction'); expect(s.auction.stage).toBe('bidding'); expect(s.deck).toEqual(['pig']);
   });
   // The auto-payment picks the least overpayment, then the fewest cards.
   it.each([
@@ -546,115 +531,17 @@ describe('decision timer', () => {
   });
 });
 
-describe('kicking and leaving mid-game', () => {
-  // The kicked player's money is spread as evenly as possible; the poorer player wins ties.
-  it('shares the money out evenly, poorer players first', () => {
-    const s = game(3); s.players[1].money = [0, 10]; const before = total(s);
-    act(s, 0, { type: 'kick', target: 2 });
-    expect(s.players[2]).toMatchObject({ out: true, money: [] });
-    expect(sorted(s.players[1].money)).toEqual(sorted([0, 10, 50])); // the poorer player gets the 50 on the tie
-    expect(sum(s.players[0].money)).toBe(90 + 40);
-    expect(total(s)).toBe(before);
-    expect(view(s, 1).note).toMatchObject({ got: [50] });
-  });
-  // Splitting 4 equal cards between 2 players gives 2 each.
-  it('splits equal cards evenly', () => {
-    const s = game(3); s.players[2].money = [10, 10, 10, 10];
-    act(s, 0, { type: 'kick', target: 2 });
-    expect(sum(s.players[0].money) - 90).toBe(20); expect(sum(s.players[1].money) - 90).toBe(20);
-  });
-  // Only the host may kick, unless the player missed 2 moves in a row; nobody kicks themselves.
-  it('limits who can kick', () => {
-    const s = game(3);
-    expect(() => act(s, 1, { type: 'kick', target: 2 })).toThrow(/Only the host/);
-    expect(() => act(s, 0, { type: 'kick', target: 0 })).toThrow(/Pick a player/);
-    s.players[2].strikes = 2; act(s, 1, { type: 'kick', target: 2 }); expect(s.players[2].out).toBe(true);
-    expect(() => act(s, 0, { type: 'kick', target: 2 })).toThrow(/Not allowed/);
-  });
-  // A kicked player is skipped and can no longer act, but still sees the table.
-  it('skips kicked players and blocks their actions', () => {
-    const s = game(3, ['duck', 'duck', 'duck']); act(s, 0, { type: 'kick', target: 1 });
-    expect(() => act(s, 1, { type: 'auction' })).toThrow(/no longer in this game/);
-    act(s, 0, { type: 'auction' }); expire(s); expect(s.turn).toBe(2);
-    act(s, 2, { type: 'auction' }); expire(s); expect(s.turn).toBe(0);
-    expect(view(s, 1).players[1].out).toBe(true);
-  });
-  // Animals left behind stay in limbo; anyone owning that type can koehandel for them and take them for free.
-  it('lets players take animals from the abandoned herd for free', () => {
-    const s = game(3); give(s, 0, { horse: 1 }); give(s, 2, { horse: 2, cow: 1 });
-    act(s, 0, { type: 'kick', target: 2 });
-    expect(s.players[2].animals).toMatchObject({ horse: 2, cow: 1 });
-    expect(targets(s, 0)).toEqual([{ p: 2, type: 'horse', count: 1, free: true }]);
-    const money = sorted(s.players[0].money);
-    act(s, 0, { type: 'koehandel', target: 2, animal: 'horse' });
-    expect(s.players[0].animals.horse).toBe(2); expect(s.players[2].animals.horse).toBe(1);
-    expect(sorted(s.players[0].money)).toEqual(money); expect(s.phase).toBe('turn'); expect(s.turn).toBe(1);
-    expect(targets(s, 1)).toEqual([]); // no cows, so the cow stays in limbo
-  });
-  // Kicking the auctioneer puts the animal in their abandoned herd and moves on.
-  it('kicking the auctioneer leaves the animal in limbo', () => {
-    const s = game(3, ['cow', 'pig']); s.turn = 1; act(s, 1, { type: 'auction' }); act(s, 2, { type: 'bid', amount: 30 });
-    act(s, 0, { type: 'kick', target: 1 });
-    expect(s.players[1].animals.cow).toBe(1); expect(s.players[1].out).toBe(true);
-    expect(s.auction).toBeNull(); expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
-    expect(sorted(s.players[2].money).length).toBeGreaterThan(7); // got a share of the money, paid nothing
-  });
-  // Kicking the highest bidder starts the bidding over.
-  it('kicking the highest bidder restarts the bidding', () => {
-    const s = open(); act(s, 1, { type: 'bid', amount: 30 }); expire(s);
-    act(s, 0, { type: 'kick', target: 1 }, 30000);
-    expect(s.auction).toMatchObject({ stage: 'bidding', high: null, deadline: 40000 });
-    act(s, 2, { type: 'bid', amount: 10 }, 31000); expect(s.auction.high.p).toBe(2);
-  });
-  // If the other side of a koehandel is kicked, the player who started it takes the animals for free; if the starter is kicked it is cancelled.
-  it('settles a koehandel when one side is kicked', () => {
-    const s = game(4); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 });
-    act(s, 0, { type: 'koehandel', target: 1, animal: 'horse' }); act(s, 0, { type: 'kick', target: 1 });
-    expect(s.players[0].animals.horse).toBe(2); expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
-    const t = game(4); give(t, 1, { horse: 1 }); give(t, 2, { horse: 1 }); t.turn = 1;
-    act(t, 1, { type: 'koehandel', target: 2, animal: 'horse' }); act(t, 0, { type: 'kick', target: 1 });
-    expect(t.trade).toBeNull(); expect(t.turn).toBe(2); expect(t.players[2].animals.horse).toBe(1);
-  });
-  // Leaving mid-game is a forfeit; when fewer than 2 players are left the game ends.
-  it('ends the game when everyone else has left', () => {
-    const s = game(3); act(s, 1, { type: 'leave' }); expect(s.players[1].out).toBe(true); expect(s.phase).toBe('turn');
-    act(s, 2, { type: 'leave' }); expect(s.phase).toBe('over'); expect(s.log[0]).toMatch(/not enough players/);
-    expect(sum(s.players[0].money)).toBe(270);
-  });
-  // If the host leaves, the next player still in the game becomes host.
-  it('passes host rights on when the host leaves', () => {
-    const s = game(4); act(s, 0, { type: 'leave' });
-    act(s, 1, { type: 'kick', target: 3 }); expect(s.players[3].out).toBe(true);
-    act(s, 1, { type: 'end' }); expect(s.phase).toBe('over');
-  });
-  // Money mule money only goes to players still in the game.
-  it('pays money mules only to players still in the game', () => {
-    const s = game(3, ['mule']); act(s, 0, { type: 'kick', target: 2 }); const p0 = sum(s.players[0].money);
-    act(s, 0, { type: 'auction' }); expect(sum(s.players[0].money)).toBe(p0 + 50); expect(s.players[2].money).toEqual([]);
-  });
-  // Animals stuck in limbo that nobody can claim do not stop the game from ending.
-  it('ends normally when unclaimable animals remain in limbo', () => {
-    const s = game(3, ['duck']); give(s, 2, { cow: 2 }); act(s, 0, { type: 'kick', target: 2 });
-    act(s, 0, { type: 'auction' }); expire(s); expect(s.phase).toBe('over');
-  });
-  // In the lobby the host can remove a player; nobody else can.
-  it('lets the host remove players in the lobby', () => {
-    const s = lobby(3); expect(() => act(s, 1, { type: 'kick', target: 2 })).toThrow(/Only the host/);
-    act(s, 0, { type: 'kick', target: 1 }); expect(s.players.map(p => p.name)).toEqual(['P0', 'P2']);
-  });
-});
-
 describe('scoring', () => {
   // Score = (sum of completed set values) x (number of sets); horse+cow+dog = 1960 x 3 = 5880.
   it('multiplies the sum of set values by the number of sets', () => {
     expect(score({ animals: zero({ horse: 4, cow: 4, dog: 4 }) })).toEqual({ sets: 3, score: 5880 });
   });
   // One complete set scores its own value times 1.
-  it('counts a single set once', () => expect(score({ animals: zero({ chicken: 4 }) })).toEqual({ sets: 1, score: 10 }));
+  it('counts a single set once', () => expect(score({ animals: zero({ duck: 4 }) })).toEqual({ sets: 1, score: 10 }));
   // Sets with fewer than 4 animals score nothing.
   it('ignores incomplete sets', () => expect(score({ animals: zero({ horse: 3, cow: 3 }) })).toEqual({ sets: 0, score: 0 }));
-  // All ten sets score 3850 x 10 = 38500.
-  it('scores a perfect hand of all ten sets', () => expect(score({ animals: zero(Object.fromEntries(TYPES.map(t => [t, 4]))) })).toEqual({ sets: 10, score: 38500 }));
+  // All ten sets score 3910 x 10 = 39100.
+  it('scores a perfect hand of all ten sets', () => expect(score({ animals: zero(Object.fromEntries(TYPES.map(t => [t, 4]))) })).toEqual({ sets: 10, score: 39100 }));
   // Scores are absent from the view during play and included when the game is over.
   it('only reveals scores in the view once the game is over', () => {
     const s = game(); expect(view(s, 0).players[0]).not.toHaveProperty('score');
@@ -685,10 +572,10 @@ describe('view (hidden information)', () => {
   it('exposes table name and visibility', () => {
     const s = newGame({ name: 'Farm', public: true }); expect(view(s, -1)).toMatchObject({ name: 'Farm', public: true });
   });
-  // Koehandel options are listed only for the player whose turn it is.
-  it('gives possible koehandels only to the player on turn', () => {
+  // Challenge options are listed only for the player whose turn it is.
+  it('gives legal challenges only to the player on turn', () => {
     const s = game(); give(s, 0, { horse: 1 }); give(s, 1, { horse: 1 });
-    expect(view(s, 0).targets).toEqual([{ p: 1, type: 'horse', count: 1 }]);
+    expect(view(s, 0).targets).toEqual([{ p: 1, type: 'horse' }]);
     expect(view(s, 1).targets).toEqual([]);
   });
 });
@@ -701,7 +588,7 @@ function step(s, r) {
   if (s.phase === 'turn') {
     const opts = [];
     if (s.deck.length) opts.push({ type: 'auction' }, { type: 'auction' });
-    for (const t of targets(s, s.turn)) opts.push({ type: 'koehandel', target: t.p, animal: t.type });
+    for (const t of targets(s, s.turn)) opts.push({ type: 'challenge', target: t.p, animal: t.type });
     return apply(s, s.turn, pick(opts), 0);
   }
   if (s.phase === 'auction') {
@@ -729,7 +616,7 @@ function invariants(s) {
     if (n !== 4) throw new Error(`${k}: ${n} cards in play`);
     if (s.players.some(p => p.animals[k] < 0 || p.animals[k] > 4)) throw new Error(`${k}: count out of range`);
   }
-  const expected = 90 * s.players.length + s.players.length * sum(MULE_PAY.slice(0, s.mules));
+  const expected = 90 * s.players.length + s.players.length * sum(DONKEY_PAY.slice(0, s.donkeys));
   if (total(s) !== expected) throw new Error(`money ${total(s)} != ${expected}`);
   if (s.players.some(p => p.money.some(c => ![0, 10, 50, 100, 200, 500].includes(c)))) throw new Error('bad card value');
 }
