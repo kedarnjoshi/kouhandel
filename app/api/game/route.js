@@ -2,6 +2,7 @@ import { Redis } from '@upstash/redis';
 import { randomUUID, randomInt } from 'crypto';
 import { newGame, newPlayer, apply, tick, view } from '../../../lib/engine';
 
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
