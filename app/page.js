@@ -183,8 +183,9 @@ export default function Page() {
   const [room, setRoom] = useState(null), [g, setG] = useState(null), [tok, setTok] = useState(null), [err, setErr] = useState('');
   const [sel, setSel] = useState([]), [bid, setBid] = useState(''), [f, setF] = useState({ code: '', name: '' }), [net, setNet] = useState('');
   const [, setTick] = useState(0), skew = useRef(0), refresh = useRef(null), busy = useRef(false), live = useRef({});
+  const [unseated, setUnseated] = useState(false), wasSeated = useRef(false); // removed from the lobby without leaving
 
-  const enter = useCallback((id, why = '') => { setG(null); setErr(why); setNet(''); setSel([]); setBid(''); setTok(id ? savedToken(id) : null); setRoom(id); }, []);
+  const enter = useCallback((id, why = '') => { wasSeated.current = false; setUnseated(false); setG(null); setErr(why); setNet(''); setSel([]); setBid(''); setTok(id ? savedToken(id) : null); setRoom(id); }, []);
   const go = useCallback((id, why) => { history.pushState(null, '', id ? '?room=' + encodeURIComponent(id) : location.pathname); enter(id, why); }, [enter]);
   useEffect(() => {
     enter(roomFromUrl());
@@ -235,6 +236,12 @@ export default function Page() {
     };
     addEventListener('pagehide', bye); return () => removeEventListener('pagehide', bye);
   }, []);
+
+  useEffect(() => {
+    if (!g) return;
+    if (g.me >= 0) { wasSeated.current = true; setUnseated(false); }
+    else if (wasSeated.current && g.phase === 'lobby') { wasSeated.current = false; setUnseated(true); }
+  }, [g]);
 
   const P = g ? g.players : [], me = g ? g.me : -1, mine = me >= 0 ? P[me] : null, hand = mine?.money || [];
   const a = g?.auction, t = g?.trade;
@@ -294,6 +301,7 @@ export default function Page() {
     <main>
       <Rules />
       {header}
+      {unseated && <p className="panel warn">You are no longer seated at this table: the host removed you or reset the table, or you were away too long. You can join again below.</p>}
       <section className="panel form narrow">
         <h2>Take a seat</h2>
         {!g.public && <input placeholder="Table code" value={f.code} onChange={e => setF({ ...f, code: e.target.value })} />}

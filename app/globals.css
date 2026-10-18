@@ -86,6 +86,7 @@ select{width:auto;margin-left:8px;cursor:pointer} select option{background:var(-
 /* feedback */
 .log{font-size:.85rem;opacity:.85;padding:0 4px} .log ul{margin:6px 0 0;padding-left:18px} .log li{margin:2px 0} .log li:first-child{font-weight:700}
 .err{color:#ff9d8a;margin:0;font-weight:600}
+.warn{border-color:#ff9d8a66;background:#ff9d8a14;margin:0}
 .muted{opacity:.7;font-size:.9rem}
 .clock{font-weight:700;opacity:.8} .clock.mine{color:var(--straw);opacity:1} .clock.low{color:#ff9d8a;animation:pulse 1s infinite}
 .notice{border:2px solid var(--straw);display:flex;flex-direction:column;gap:10px;cursor:pointer;animation:drop .4s ease-out;background:linear-gradient(180deg,#e8c4681f,#e8c46808)}
