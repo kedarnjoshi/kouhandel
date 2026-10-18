@@ -210,7 +210,13 @@ export default function Page() {
     };
     refresh.current = load;
     load();
-    return () => { dead = true; clearTimeout(timer); if (refresh.current === load) refresh.current = null; };
+    // A hidden tab polls slowly; coming back to it (or getting the network back) must show the table as it is now.
+    const wake = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', wake); addEventListener('focus', wake); addEventListener('online', wake);
+    return () => {
+      dead = true; clearTimeout(timer); if (refresh.current === load) refresh.current = null;
+      document.removeEventListener('visibilitychange', wake); removeEventListener('focus', wake); removeEventListener('online', wake);
+    };
   }, [room, tok, go]);
   useEffect(() => { const i = setInterval(() => setTick(x => x + 1), 250); return () => clearInterval(i); }, []);
 
@@ -237,7 +243,7 @@ export default function Page() {
     busy.current = true; setErr('');
     try {
       const { j } = await api('', { room, token: tok, ...body });
-      if (j.error) { setErr(j.error); return null; }
+      if (j.error) { setErr(j.error); refresh.current?.(); return null; } // most refusals mean our view was out of date
       setSel([]); refresh.current?.(); return j;
     } catch { setErr('Connection problem, please try again'); return null; }
     finally { busy.current = false; }
