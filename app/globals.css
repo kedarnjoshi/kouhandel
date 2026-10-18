@@ -105,7 +105,8 @@ select{width:auto;margin-left:8px;cursor:pointer} select option{background:var(-
 
 /* how to play drawer */
 /* rotated so it reads bottom-to-top; hover/press must keep that transform, or the tab flips and jumps */
-.rules-tab,.rules-tab:hover:not(:disabled),.rules-tab:active:not(:disabled){position:fixed;right:0;top:50%;z-index:30;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;border-radius:10px 0 0 10px;padding:14px 8px;box-shadow:0 6px 18px #0006}
+/* the corners are given before the rotation: after turning 180deg the rounded side faces the page, the flat side the screen edge */
+.rules-tab,.rules-tab:hover:not(:disabled),.rules-tab:active:not(:disabled){position:fixed;right:0;top:50%;z-index:30;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;border-radius:0 10px 10px 0;padding:14px 8px;box-shadow:0 0 18px #0006}
 .rules-tab:hover:not(:disabled){padding-right:12px}
 .rules-tab[aria-expanded=true]{display:none}
 .rules-shade{position:fixed;inset:0;z-index:20;background:#0006;animation:fade .2s}
