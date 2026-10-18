@@ -7,8 +7,12 @@ const nameOf = t => (t === 'mule' ? 'Money mule' : cap(t)); // display name of a
 const sum = a => a.reduce((x, y) => x + y, 0);
 const animals = (n, t) => (n > 1 && t !== 'sheep' ? `${n} ${nameOf(t)}s` : `${n > 1 ? n + ' ' : ''}${nameOf(t)}`);
 const roomFromUrl = () => (new URLSearchParams(location.search).get('room') || '').trim().toLowerCase();
-const savedToken = id => { try { return localStorage.getItem('kh:' + id) || ''; } catch { return ''; } };
-const saveToken = (id, t) => { try { t ? localStorage.setItem('kh:' + id, t) : localStorage.removeItem('kh:' + id); } catch {} };
+// Seats are remembered per tab (sessionStorage) so two tabs can be two players, with localStorage as the fallback
+// for a new tab or a reopened browser.
+const savedToken = id => { try { return sessionStorage.getItem('kh:' + id) || localStorage.getItem('kh:' + id) || ''; } catch { return ''; } };
+const saveToken = (id, t) => {
+  for (const st of ['sessionStorage', 'localStorage']) try { t ? window[st].setItem('kh:' + id, t) : window[st].removeItem('kh:' + id); } catch {}
+};
 
 // How long to wait before the next poll. Only poll fast when someone else can change the table any moment.
 function pollDelay(g, skew) {
