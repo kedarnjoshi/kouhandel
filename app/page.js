@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { ANIMALS } from '../lib/engine';
 
 const cap = s => s[0].toUpperCase() + s.slice(1);
 const sum = a => a.reduce((x, y) => x + y, 0);
@@ -250,7 +251,7 @@ export default function Page() {
   else if (g.phase === 'auction') {
     const hi = a.high, isAu = me === a.auctioneer;
     panel = (<div className="center"><Animal t={a.type} /><div>
-      <h2>{name(a.auctioneer)} auctions a {cap(a.type)}</h2>
+      <h2>{name(a.auctioneer)} auctions a {cap(a.type)} with {ANIMALS[a.type]} points</h2>
       {a.stage === 'bidding' && (<>
         <p className="highbid"><span className="big">{hi ? hi.amt : '—'}</span><span>{hi ? <>highest bid by <b>{name(hi.p)}</b></> : 'no bids yet'}</span></p>
         <div className={`bar${left <= 5 ? ' low' : ''}`}><i style={{ width: `${Math.min(100, left / 20 * 100)}%` }} /><span>{left}s</span></div>
