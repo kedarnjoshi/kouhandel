@@ -591,13 +591,62 @@ describe('kicking and leaving mid-game', () => {
     expect(sorted(s.players[0].money)).toEqual(money); expect(s.phase).toBe('turn'); expect(s.turn).toBe(1);
     expect(targets(s, 1)).toEqual([]); // no cows, so the cow stays in limbo
   });
-  // Kicking the auctioneer puts the animal in their abandoned herd and moves on.
-  it('kicking the auctioneer leaves the animal in limbo', () => {
+  // Kicking the auctioneer mid-bidding: bidding goes on; the highest bidder then buys it and the payment is shared out.
+  it('kicking the auctioneer during bidding: the auction finishes and the payment is shared', () => {
     const s = game(3, ['cow', 'pig']); s.turn = 1; act(s, 1, { type: 'auction' }); act(s, 2, { type: 'bid', amount: 30 });
     act(s, 0, { type: 'kick', target: 1 });
-    expect(s.players[1].animals.cow).toBe(1); expect(s.players[1].out).toBe(true);
-    expect(s.auction).toBeNull(); expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
-    expect(sorted(s.players[2].money).length).toBeGreaterThan(7); // got a share of the money, paid nothing
+    expect(s.players[1].out).toBe(true); expect(s.auction.stage).toBe('bidding');
+    act(s, 0, { type: 'bid', amount: 40 }); expire(s);
+    expect(s.auction).toMatchObject({ stage: 'pay', payer: 0, payee: 1 }); // nobody left to decide: sold
+    const before = total(s);
+    act(s, 0, { type: 'pay', cards: [50] });
+    expect(s.players[0].animals.cow).toBe(1); expect(s.players[1].money).toEqual([]);
+    expect(total(s)).toBe(before); expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
+  });
+  // With no bids the animal stays in the departed auctioneer's abandoned herd.
+  it('kicking the auctioneer with no bids leaves the animal in limbo', () => {
+    const s = game(3, ['cow', 'pig']); s.turn = 1; act(s, 1, { type: 'auction' }); act(s, 0, { type: 'kick', target: 1 });
+    expire(s); expect(s.players[1].animals.cow).toBe(1); expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
+  });
+  // Kicking the auctioneer while they decide: the highest bidder buys it.
+  it('kicking the auctioneer while deciding sells to the highest bidder', () => {
+    const s = game(3, ['cow', 'pig']); s.turn = 1; act(s, 1, { type: 'auction' }); act(s, 2, { type: 'bid', amount: 30 }); expire(s);
+    act(s, 0, { type: 'kick', target: 1 });
+    expect(s.auction).toMatchObject({ stage: 'pay', payer: 2, payee: 1 });
+  });
+  // The example from testing: A bid 30, the auctioneer sold to A, A is kicked before paying. A pays like a timeout would.
+  it('kicking a player who still has to pay: they pay first with their cheapest cards, then leave', () => {
+    const s = game(3, ['cow', 'pig']); act(s, 0, { type: 'auction' }); act(s, 1, { type: 'bid', amount: 30 }); expire(s);
+    act(s, 0, { type: 'sell' }); act(s, 0, { type: 'kick', target: 1 });
+    expect(s.players[1]).toMatchObject({ out: true, money: [] }); expect(s.players[1].animals.cow).toBe(1); // in limbo now
+    expect(s.log.join('|')).toMatch(/P1 gets the cow for 30/);
+    expect(sum(s.players[0].money) + sum(s.players[2].money)).toBe(270); // the 30 plus the rest of P1's money
+    expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
+  });
+  // The auctioneer chose to buy and is kicked before paying: they pay the highest bidder first.
+  it('kicking an auctioneer who bought: they pay the bidder first', () => {
+    const s = game(3, ['cow', 'pig']); s.turn = 1; act(s, 1, { type: 'auction' }); act(s, 2, { type: 'bid', amount: 30 }); expire(s);
+    act(s, 1, { type: 'buy' }); act(s, 0, { type: 'kick', target: 1 });
+    expect(view(s, 2).note).toBeTruthy(); expect(s.players[1].animals.cow).toBe(1);
+    expect(s.log.join('|')).toMatch(/P1 gets the cow for 30/); expect(s.phase).toBe('turn'); expect(s.turn).toBe(2);
+  });
+  // The auctioneer bought from a bidder who is then kicked: the payment still happens and is shared out.
+  it('kicking the bidder an auctioneer is paying: the payment is shared out', () => {
+    const s = open(['cow', 'pig']); act(s, 1, { type: 'bid', amount: 30 }); expire(s); act(s, 0, { type: 'buy' });
+    act(s, 0, { type: 'kick', target: 1 }); expect(s.auction).toMatchObject({ stage: 'pay', payer: 0 });
+    const before = total(s); act(s, 0, { type: 'pay', cards: [10, 10, 10] });
+    expect(s.players[1].money).toEqual([]); expect(total(s)).toBe(before); expect(s.players[0].animals.cow).toBe(1);
+  });
+  // A kicked player is told so privately.
+  it('tells the kicked player', () => {
+    const s = game(3); act(s, 0, { type: 'kick', target: 2 });
+    expect(view(s, 2).note.text).toMatch(/P0 removed you from the game/);
+  });
+  // A payment that somehow cannot be covered never freezes the game.
+  it('never gets stuck on a payment that cannot be made', () => {
+    const s = open(['cow', 'pig']); act(s, 1, { type: 'bid', amount: 30 }); expire(s); act(s, 0, { type: 'sell' });
+    s.players[1].money = [10]; tick(s, s.due);
+    expect(s.phase).toBe('turn'); expect(s.players[0].animals.cow).toBe(1); expect(s.log[0]).toMatch(/cannot pay/);
   });
   // Kicking the highest bidder starts the bidding over.
   it('kicking the highest bidder restarts the bidding', () => {
@@ -707,8 +756,8 @@ function step(s, r) {
   if (s.phase === 'auction') {
     const au = s.auction;
     if (au.stage === 'bidding') {
-      const b = pick(P.map((_, i) => i).filter(i => i !== au.auctioneer && (!au.high || au.high.p !== i))), amt = (au.high ? au.high.amt : 0) + 10 * (1 + Math.floor(r() * 5));
-      if (r() < 0.6 && amt <= sum(P[b].money)) return apply(s, b, { type: 'bid', amount: amt }, 0);
+      const b = pick(P.map((_, i) => i).filter(i => i !== au.auctioneer && !P[i].out && (!au.high || au.high.p !== i))), amt = (au.high ? au.high.amt : 0) + 10 * (1 + Math.floor(r() * 5));
+      if (b !== undefined && r() < 0.6 && amt <= sum(P[b].money)) return apply(s, b, { type: 'bid', amount: amt }, 0);
       tick(s, au.deadline); return s;
     }
     if (au.stage === 'decide') return apply(s, au.auctioneer, { type: r() < 0.5 && sum(P[au.auctioneer].money) >= au.high.amt ? 'buy' : 'sell' }, 0);
@@ -742,6 +791,33 @@ describe('random full games', () => {
       while (s.phase !== 'over' && n++ < 4000) { step(s, r); invariants(s); }
       if (s.phase !== 'over') apply(s, 0, { type: 'end' }, 0); // endless trade ping-pong is allowed; the host ends it
       else expect(s.deck).toHaveLength(0), s.players.forEach((_, i) => expect(targets(s, i)).toEqual([]));
+      expect(s.phase).toBe('over');
+    });
+  }
+});
+// ---- the same random games, with players kicked or leaving at random moments ----
+describe('random full games with kicks and leaves', () => {
+  const countAnimals = s => TYPES.map(k => s.deck.filter(x => x === k).length + s.players.reduce((a, p) => a + p.animals[k], 0) + (s.auction && s.auction.type === k ? 1 : 0));
+  for (let seed = 1; seed <= 60; seed++) {
+    // Kicks (by the host) and leaves happen during auctions, payments and koehandels; money is never created or lost and every animal stays accounted for.
+    it(`seed ${seed}: kicks and leaves never break the game`, () => {
+      const r = rng(1000 + seed), s = lobby(4 + (seed % 2)); apply(s, 0, { type: 'start' }, 0);
+      const live = () => s.players.map((p, i) => i).filter(i => !s.players[i].out);
+      let n = 0, removed = 0;
+      while (s.phase !== 'over' && n++ < 4000) {
+        const before = total(s), mules = s.mules, players = live().length;
+        if (r() < 0.03 && removed < 2) {
+          const who = live()[Math.floor(r() * live().length)], host = live()[0];
+          if (who !== host && r() < 0.5) apply(s, host, { type: 'kick', target: who }, 0); else apply(s, who, { type: 'leave' }, 0);
+          removed++;
+        } else step(s, r);
+        expect(countAnimals(s)).toEqual(TYPES.map(() => 4));
+        expect(total(s)).toBe(before + (s.mules > mules ? MULE_PAY[mules] * players : 0));
+        expect(s.players.filter(p => p.out).every(p => p.money.length === 0)).toBe(true);
+        const w = s.phase === 'over' ? null : (s.phase === 'auction' && s.auction.stage === 'bidding' ? null : s.phase);
+        if (w) { const p = { turn: s.turn, trade: s.trade && (s.trade.a in s.trade.bids ? s.trade.b : s.trade.a) }[w] ?? (s.auction.stage === 'decide' ? s.auction.auctioneer : s.auction.payer); expect(s.players[p].out).toBeFalsy(); }
+      }
+      if (s.phase !== 'over') apply(s, live()[0], { type: 'end' }, 0);
       expect(s.phase).toBe('over');
     });
   }
