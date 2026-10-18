@@ -2,24 +2,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const cap = s => s[0].toUpperCase() + s.slice(1);
-const nameOf = t => (t === 'mule' ? 'Money mule' : cap(t)); // display name of an animal
 const sum = a => a.reduce((x, y) => x + y, 0);
-const animals = (n, t) => (n > 1 && t !== 'sheep' ? `${n} ${nameOf(t)}s` : `${n > 1 ? n + ' ' : ''}${nameOf(t)}`);
+const animals = (n, t) => (n > 1 && t !== 'sheep' ? `${n} ${cap(t)}s` : `${n > 1 ? n + ' ' : ''}${cap(t)}`);
 const roomFromUrl = () => (new URLSearchParams(location.search).get('room') || '').trim().toLowerCase();
 const savedToken = id => { try { return localStorage.getItem('kh:' + id) || ''; } catch { return ''; } };
 const saveToken = (id, t) => { try { t ? localStorage.setItem('kh:' + id, t) : localStorage.removeItem('kh:' + id); } catch {} };
 
-// How long to wait before the next poll. Only poll fast when someone else can change the table any moment.
-function pollDelay(g, skew) {
-  if (typeof document !== 'undefined' && document.hidden) return 15000;
-  if (!g) return 2000;
-  if (g.phase === 'over') return 30000;
-  if (g.phase === 'lobby') return 3000;
-  const soon = at => Math.max(400, at - (Date.now() + skew) + 300); // look right after a deadline passes
-  if (g.phase === 'auction' && g.auction.stage === 'bidding') return Math.min(g.me === g.auction.auctioneer ? 2500 : 1500, soon(g.auction.deadline));
-  const mine = g.waiting && g.waiting.p === g.me; // nobody else can move: only check now and then (kicks, the clock)
-  return Math.min(mine ? 10000 : 2500, g.due ? soon(g.due) : 10000);
-}
 async function api(query = '', body) { // never throws on bad JSON; network errors still throw
   const res = await fetch('/api/game' + query, body
     ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' }
@@ -56,51 +44,11 @@ const Seats = ({ n }) => <span className="seats" title={`${n}/5 players`}>{[0, 1
 const Toggle = ({ on, set, children }) => <label className="toggle"><input type="checkbox" checked={on} onChange={e => set(e.target.checked)} /><span className="knob" />{children}</label>;
 const COLORS = ['#e07a5f', '#81b29a', '#f2cc8f', '#7aa5d8', '#c792ea'];
 const Avatar = ({ i, name }) => <span className="avatar" style={{ background: COLORS[i % COLORS.length] }}>{(name || '?')[0].toUpperCase()}</span>;
-const VALUES = [['Horse', 1000], ['Cow', 800], ['Pig', 650], ['Money mule', 500], ['Goat', 350], ['Sheep', 250], ['Dog', 160], ['Cat', 90], ['Duck', 40], ['Chicken', 10]];
-// "How to play" drawer: collapsed by default, opened from the tab on the right edge.
-function Rules() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => { const k = e => e.key === 'Escape' && setOpen(false); addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, []);
-  return (<>
-    <button className="rules-tab" aria-expanded={open} aria-controls="rules" onClick={() => setOpen(o => !o)}>{open ? 'Close' : 'How to play'}</button>
-    {open && <div className="rules-shade" onClick={() => setOpen(false)} />}
-    <aside id="rules" className={`rules${open ? ' open' : ''}`} aria-hidden={!open} inert={open ? undefined : ''}>
-      <div className="row"><h2 className="grow">How to play</h2><button className="ghost small" onClick={() => setOpen(false)}>Close</button></div>
-      <h3>Goal</h3>
-      <p>Collect complete sets of 4 of the same animal. Your score is the total value of your sets times the number of sets (3 sets worth 1960 together score 5880). Money is worth nothing at the end.</p>
-      <h3>Start</h3>
-      <p>3 to 5 players. Everyone gets 90: two 0s, four 10s and one 50. Keep your money secret: others only see how many cards you hold.</p>
-      <h3>Your turn</h3>
-      <p>Either <b>auction</b> the next animal from the deck, or start a <b>koehandel</b> with a player who owns the same kind of animal as you.</p>
-      <h3>Auction</h3>
-      <ul>
-        <li>The others bid in steps of 10. Bidding runs 20s, and every new bid resets the clock to 10s. The auctioneer may add 5s once.</li>
-        <li>When time runs out the auctioneer either sells to the highest bidder, or buys the animal by paying that bidder the same amount.</li>
-        <li>No change is given: pay with cards worth at least the bid. No bids? The auctioneer gets the animal for free.</li>
-        <li><b>Money mules:</b> each time one comes up, everyone receives 50, then 100, 200 and 500.</li>
-      </ul>
-      <h3>Koehandel</h3>
-      <ul>
-        <li>Pick a player who has an animal type you have too. If you both have 2, you play for both; otherwise for 1.</li>
-        <li>You put money cards face down. The other player sees how many cards, then <b>accepts</b> (takes your cards, hands over the animal) or makes a <b>counter-offer</b> face down.</li>
-        <li>The higher offer wins the animals, and the two offers swap hands. A tie: you offer again; a second tie and you win for free.</li>
-      </ul>
-      <h3>End</h3>
-      <p>When the deck is empty only koehandels are left. The game ends when every set is complete.</p>
-      <h3>Time limit</h3>
-      <p>Each move has a time limit. Run out and your turn is skipped; in the middle of an action the obvious choice is made: the auctioneer buys if they can, payment uses your cheapest cards, an offer is 0 cards and an answer is "accept".</p>
-      <h3>Leaving and kicking</h3>
-      <p>The host can kick anyone; anyone can kick a player who missed 2 moves in a row. A player who leaves or is kicked has their money shared out evenly (poorest first). Their animals stay on the table: anyone who owns that animal can start a koehandel for them and take them for free.</p>
-      <h3>Animal values</h3>
-      <table className="values"><tbody>{VALUES.map(([a, v]) => <tr key={a}><td>{a}</td><td>{v}</td></tr>)}</tbody></table>
-    </aside>
-  </>);
-}
-const Animal = ({ t, ...p }) => <Card src={`/cards/${t}.png`} label={nameOf(t)} {...p} />;
+const Animal = ({ t, ...p }) => <Card src={`/cards/${t}.png`} label={cap(t)} {...p} />;
 const Money = ({ v, ...p }) => <Card src={`/cards/${v}.jpg`} label={String(v)} {...p} />;
 
 function Rooms({ go, err: e0 }) {
-  const [list, setList] = useState(null), [err, setErr] = useState(e0), [n, setN] = useState({ name: '', pub: true, code: '', log: true, timeout: 30 }), [jr, setJr] = useState('');
+  const [list, setList] = useState(null), [err, setErr] = useState(e0), [n, setN] = useState({ name: '', pub: true, code: '', log: true, timeout: 60 }), [jr, setJr] = useState('');
   const [busy, setBusy] = useState(false), [listErr, setListErr] = useState('');
   useEffect(() => {
     let dead = false, timer;
@@ -110,7 +58,7 @@ function Rooms({ go, err: e0 }) {
         if (dead) return;
         if (Array.isArray(j)) { setList(j); setListErr(''); } else setListErr(j.error);
       } catch { if (!dead) setListErr('Cannot reach the server, retrying…'); }
-      if (!dead) timer = setTimeout(load, document.hidden ? 30000 : 5000);
+      if (!dead) timer = setTimeout(load, document.hidden ? 10000 : 3000);
     };
     load();
     return () => { dead = true; clearTimeout(timer); };
@@ -128,9 +76,8 @@ function Rooms({ go, err: e0 }) {
   const label = p => (p === 'lobby' ? 'open' : p === 'over' ? 'finished' : 'playing');
   return (
     <main>
-      <Rules />
       <header className="hero">
-        <h1>Koehandel</h1>
+        <h1>Kuhhandel</h1>
         <p className="tag">Bid, bluff and horse-trade your way to the finest farm. 3 to 5 players.</p>
       </header>
       <div className="lobby-grid">
@@ -154,7 +101,7 @@ function Rooms({ go, err: e0 }) {
               <Toggle on={n.log} set={v => setN({ ...n, log: v })}>Game log</Toggle>
               <label className="field">Time per move
                 <select value={n.timeout} onChange={e => setN({ ...n, timeout: Number(e.target.value) })}>
-                  {[10, 15, 20, 30, 45, 60, 90, 120].map(v => <option key={v} value={v}>{v < 60 ? `${v}s` : `${v / 60} min`}</option>)}
+                  {[30, 45, 60, 90, 120, 180, 240, 300].map(v => <option key={v} value={v}>{v < 60 ? `${v}s` : `${v / 60} min`}</option>)}
                 </select></label>
             </div>
             {!n.pub && <input placeholder="Table code (password)" maxLength={40} value={n.code} onChange={e => setN({ ...n, code: e.target.value })} />}
@@ -187,25 +134,23 @@ export default function Page() {
     addEventListener('popstate', onPop); return () => removeEventListener('popstate', onPop);
   }, [enter]);
 
-  useEffect(() => { // poll the table; one request at a time, newest state wins, as rarely as the game allows
+  useEffect(() => { // poll the table; one request at a time, newest state wins
     if (!room || tok === null) return;
-    let dead = false, timer, misses = 0, lastV = -1, lastBeat = 0, last = null, slow = 0;
+    let dead = false, timer, misses = 0, lastV = -1;
     const load = async () => {
       clearTimeout(timer);
-      const beat = tok && Date.now() - lastBeat > 20000; // seated players say "still here" every 20s
       try {
-        const { status, j } = await api(`?room=${encodeURIComponent(room)}&token=${encodeURIComponent(tok)}${beat ? '&hb=1' : ''}`);
+        const { status, j } = await api(`?room=${encodeURIComponent(room)}&token=${encodeURIComponent(tok)}`);
         if (dead) return;
-        slow = status === 429 ? 5000 : 0;
         if (status === 404) { // only give up once the server keeps saying so, never on a single blip
-          if (++misses >= 3) { dead = true; go('', 'This table no longer exists: the game finished or everyone left.'); return; }
+          if (++misses >= 3) { dead = true; go('', j.error || 'Room not found'); return; }
         } else if (j.error) setNet(j.error);
         else {
-          misses = 0; setNet(''); if (beat) lastBeat = Date.now();
-          if (!(j.v < lastV)) { lastV = j.v; skew.current = j.now - Date.now(); setG(j); last = j; }
+          misses = 0; setNet('');
+          if (!(j.v < lastV)) { lastV = j.v; skew.current = j.now - Date.now(); setG(j); }
         }
       } catch { if (!dead) setNet('Connection problem, retrying…'); }
-      if (!dead) timer = setTimeout(load, Math.max(slow, pollDelay(last, skew.current)));
+      if (!dead) timer = setTimeout(load, document.hidden ? 4000 : 1000);
     };
     refresh.current = load;
     load();
@@ -242,14 +187,11 @@ export default function Page() {
     finally { busy.current = false; }
   };
   const join = async () => { const j = await post({ type: 'join', ...f }); if (j?.token) { saveToken(room, j.token); setTok(j.token); } };
-  const playing = !!g && me >= 0 && !mine.out && g.phase !== 'lobby' && g.phase !== 'over';
   const leave = async () => {
-    if (playing && !confirm('Leave the game? Your money is shared out among the others and your animals stay on the table for anyone to take.')) return;
-    if (((g?.phase === 'lobby' && me >= 0) || playing) && !(await post({ type: 'leave' }))) return;
+    if (g?.phase === 'lobby' && me >= 0 && !(await post({ type: 'leave' }))) return;
     if (g?.phase === 'lobby') saveToken(room, '');
     go('');
   };
-  const kick = i => confirm(g.phase === 'lobby' ? `Remove ${P[i].name} from the table?` : `Kick ${P[i].name}? Their money is shared out and their animals stay on the table for anyone to take.`) && post({ type: 'kick', target: i });
 
   if (room === null) return <main><p>Loading…</p></main>;
   if (!room) return <Rooms go={go} err={err} />;
@@ -263,8 +205,6 @@ export default function Page() {
   const w = g.waiting, clock = w && g.due ? secsTo(g.due) : null;
   const clockLine = clock !== null && <p className={`clock${w.p === me ? ' mine' : ''}${clock <= 10 ? ' low' : ''}`}>{w.p === me ? 'Your' : `${name(w.p)}'s`} time: {clock}s</p>;
   const myTurn = me >= 0 && g.turn === me;
-  const hostIdx = P.findIndex(p => !p.out), isHost = me >= 0 && me === hostIdx;
-  const canKick = i => i !== me && !P[i].out && g.phase !== 'over' && me >= 0 && !mine.out && (isHost || (g.phase !== 'lobby' && P[i].strikes >= 2));
   const header = (
     <header className="topbar">
       <div className="grow">
@@ -272,16 +212,15 @@ export default function Page() {
         <div className="chips">
           <span className="chip">Table <b>{room}</b></span>
           {!g.public && <span className="chip">Private</span>}
-          {g.phase !== 'lobby' && <><span className="chip"><b>{g.deck}</b> animals left</span><span className="chip"><b>{g.mules ?? 0}</b>/4 money mules</span></>}
+          {g.phase !== 'lobby' && <><span className="chip"><b>{g.deck}</b> animals left</span><span className="chip"><b>{g.donkeys}</b>/4 donkeys</span></>}
         </div>
       </div>
-      <button className="ghost" onClick={leave}>{playing ? 'Leave game' : 'Leave'}</button>
+      <button className="ghost" onClick={leave}>Leave</button>
     </header>
   );
 
   if (me < 0 && g.phase === 'lobby') return (
     <main>
-      <Rules />
       {header}
       <section className="panel form narrow">
         <h2>Take a seat</h2>
@@ -297,7 +236,7 @@ export default function Page() {
   let panel = null;
   if (g.phase === 'lobby') panel = (<>
     <h2>Waiting for players ({P.length}/5)</h2>
-    {isHost ? <p><button disabled={P.length < 3} onClick={() => post({ type: 'start' })}>Start game</button> {P.length < 3 && <span className="muted">Needs 3 players</span>}</p> : <p>Waiting for {name(0)} to start.</p>}
+    {me === 0 ? <p><button disabled={P.length < 3} onClick={() => post({ type: 'start' })}>Start game</button> {P.length < 3 && <span className="muted">Needs 3 players</span>}</p> : <p>Waiting for {name(0)} to start.</p>}
     <p className="muted">Settings: {g.timeout}s per move · game log {g.showLog ? 'on' : 'off'}.</p>
     <p className="muted">Share the table ID <b>{room}</b>{!g.public && ' and the code'} with your friends. Players who close the page before the start lose their seat.</p>
   </>);
@@ -305,18 +244,17 @@ export default function Page() {
     <h2>Your turn</h2>{clockLine}
     <div className="row">
       {g.deck > 0 && <button onClick={() => post({ type: 'auction' })}>Auction the next animal</button>}
-      {g.targets.map((x, i) => <button key={i} className={x.free ? '' : 'ghost'} onClick={() => post({ type: 'koehandel', target: x.p, animal: x.type })}>
-        {x.free ? `Take ${animals(x.count, x.type)} from ${name(x.p)}'s abandoned herd (free)` : `Koehandel with ${name(x.p)} for ${animals(x.count, x.type)}`}</button>)}
+      {g.targets.map((x, i) => <button key={i} className="ghost" onClick={() => post({ type: 'challenge', target: x.p, animal: x.type })}>Trade with {name(x.p)} for {cap(x.type)}</button>)}
     </div>
   </>) : <><h2>{name(g.turn)} is choosing…</h2>{clockLine}</>;
   else if (g.phase === 'auction') {
     const hi = a.high, isAu = me === a.auctioneer;
     panel = (<div className="center"><Animal t={a.type} /><div>
-      <h2>{name(a.auctioneer)} auctions a {nameOf(a.type)}</h2>
+      <h2>{name(a.auctioneer)} auctions a {cap(a.type)}</h2>
       {a.stage === 'bidding' && (<>
         <p className="highbid"><span className="big">{hi ? hi.amt : '—'}</span><span>{hi ? <>highest bid by <b>{name(hi.p)}</b></> : 'no bids yet'}</span></p>
         <div className={`bar${left <= 5 ? ' low' : ''}`}><i style={{ width: `${Math.min(100, left / 20 * 100)}%` }} /><span>{left}s</span></div>
-        {isAu ? <div className="row"><button className="ghost" disabled={a.extended || left >= 20} onClick={() => post({ type: 'extend' })}>+5s</button><span className="muted">{a.extended ? 'You already added time. ' : 'You can add 5s once. '}Every bid resets the clock to 10s.</span></div>
+        {isAu ? <div className="row"><button className="ghost" disabled={left >= 20} onClick={() => post({ type: 'extend' })}>+5s</button><span className="muted">Bidding closes when the timer runs out (max 20s).</span></div>
           : hi && hi.p === me ? <p className="muted">You are the highest bidder.</p>
           : me >= 0 && <div className="row">
             {[10, 50, 100].map(d => { const amt = (hi ? hi.amt : 0) + d; return <button key={d} className="ghost" disabled={amt > money} onClick={() => post({ type: 'bid', amount: amt })}>+{d}</button>; })}
@@ -325,7 +263,6 @@ export default function Page() {
           </div>}
       </>)}
       {a.stage !== 'bidding' && clockLine}
-      {a.stage === 'decide' && clock !== null && isAu && <p className="muted">If time runs out you {money >= hi.amt ? 'buy it' : 'sell it'} automatically.</p>}
       {a.stage === 'decide' && (isAu
         ? <div className="row"><button onClick={() => post({ type: 'sell' })}>Sell to {name(hi.p)} for {hi.amt}</button><button className="ghost" disabled={money < hi.amt} onClick={() => post({ type: 'buy' })}>Buy it for {hi.amt}</button></div>
         : <p>{name(a.auctioneer)} is deciding whether to sell or buy at {hi.amt}.</p>)}
@@ -336,13 +273,13 @@ export default function Page() {
   } else if (g.phase === 'trade') {
     const offered = t.offer !== null, isA = t.a === me, isB = t.b === me, done = t.submitted.includes(me), cards = n => `${n} card${n === 1 ? '' : 's'}`;
     panel = (<div className="center"><Animal t={t.type} badge={t.count} /><div>
-      <h2>Koehandel: {name(t.a)} vs {name(t.b)} for {animals(t.count, t.type)}</h2>
+      <h2>{name(t.a)} challenges {name(t.b)} for {animals(t.count, t.type)}</h2>
       {t.ties > 0 && <p><b>It was a tie!</b> {name(t.a)} offers again. Another tie and {name(t.a)} wins for free.</p>}
       <p>{offered ? <>{name(t.a)} put <b>{cards(t.offer)}</b> face down.</> : `Waiting for ${name(t.a)} to make an offer.`}</p>
       {clockLine}
-      {isA && !done && <><p>Pick your offer, face down. Picking none (or running out of time) offers 0. Selected: {pickedSum}</p><button onClick={() => post({ type: 'tradebid', cards: picked })}>Make offer ({cards(picked.length)})</button></>}
+      {isA && !done && <><p>Pick your offer, face down. Picking none offers 0. Selected: {pickedSum}</p><button onClick={() => post({ type: 'tradebid', cards: picked })}>Make offer ({cards(picked.length)})</button></>}
       {isA && done && <p>Your offer is on the table. Waiting for {name(t.b)} to answer.</p>}
-      {isB && offered && <><p>If time runs out you accept automatically. Accept the offer (you hand over the {nameOf(t.type).toLowerCase()} and take the {cards(t.offer)}), or pick a counter-offer: the higher offer wins and the offers swap. Selected: {pickedSum}</p>
+      {isB && offered && <><p>Accept the offer (you hand over the {t.type} and take the {cards(t.offer)}), or pick a counter-offer: the higher offer wins and the offers swap. Selected: {pickedSum}</p>
         <div className="row"><button className="ghost" onClick={() => post({ type: 'accept' })}>Accept offer</button><button onClick={() => post({ type: 'tradebid', cards: picked })}>Counter-offer ({cards(picked.length)})</button></div></>}
       {isB && !offered && <p>Wait for {name(t.a)}'s offer, then decide.</p>}
     </div></div>);
@@ -354,9 +291,7 @@ export default function Page() {
   return (
     <main>
       {header}
-      <Rules />
       {me < 0 && <p className="muted">You are watching this game.{!g.public && ' Were you playing? Enter your table code and name to get back in.'}</p>}
-      {mine?.out && g.phase !== 'over' && <p className="muted">You are no longer in this game. You can keep watching.</p>}
       {me < 0 && !g.public && <div className="panel row">
         <input placeholder="Table code" value={f.code} onChange={e => setF({ ...f, code: e.target.value })} />
         <input placeholder="Your name" maxLength={16} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
@@ -364,10 +299,8 @@ export default function Page() {
       </div>}
       <div className="players">
         {P.map((p, i) => (
-          <div key={i} className={`panel pl${(g.waiting ? g.waiting.p : a?.auctioneer) === i ? ' turn' : ''}${i === me ? ' me' : ''}${p.out ? ' out' : ''}`}>
-            <div className="who"><Avatar i={i} name={p.name} /><div className="grow"><b>{p.name}{i === me ? ' (you)' : ''}</b>
-              <span className="muted">{p.out ? 'out of the game · animals up for grabs' : <>{i === hostIdx ? 'host · ' : ''}{g.phase === 'lobby' ? 'ready' : `${p.cards} money card${p.cards === 1 ? '' : 's'}`}{p.strikes >= 2 ? ` · missed ${p.strikes} moves` : ''}</>}</span></div>
-              {canKick(i) && <button className="ghost small kick" onClick={() => kick(i)}>{g.phase === 'lobby' ? 'Remove' : 'Kick'}</button>}</div>
+          <div key={i} className={`panel pl${(g.waiting ? g.waiting.p : a?.auctioneer) === i ? ' turn' : ''}${i === me ? ' me' : ''}`}>
+            <div className="who"><Avatar i={i} name={p.name} /><div><b>{p.name}{i === me ? ' (you)' : ''}</b><span className="muted">{i === 0 && g.phase === 'lobby' ? 'host · ' : ''}{p.cards} money card{p.cards === 1 ? '' : 's'}</span></div></div>
             <div className="row">{Object.entries(p.animals).filter(([, n]) => n > 0).map(([k, n]) => <Animal key={k} t={k} small badge={n} gold={n === 4} />)}</div>
           </div>
         ))}
@@ -375,12 +308,12 @@ export default function Page() {
       {me >= 0 && <Notice key={room} n={g.note} />}
       <section className="panel stage">{panel}</section>
       {err && <p className="err">{err}</p>}{net && <p className="err">{net}</p>}
-      {me >= 0 && !mine.out && g.phase !== 'lobby' && <div className="panel">
+      {me >= 0 && g.phase !== 'lobby' && <div className="panel">
         <div className="row"><h2 className="grow">Your money</h2><span className="big">{money}</span></div>
         <div className="hand">{hand.map((v, i) => <Money key={i} v={v} sel={sel.includes(i)} onClick={canPick ? () => toggle(i) : null} />)}</div>
       </div>}
       {g.log.length > 0 && <div className="log"><span className="muted">{g.showLog ? 'Game log' : 'Latest (game log is off)'}</span><ul>{g.log.map((l, i) => <li key={i}>{l}</li>)}</ul></div>}
-      {isHost && <div className="row">
+      {me === 0 && <div className="row">
         {g.phase !== 'lobby' && g.phase !== 'over' && <button className="ghost" onClick={() => confirm('End the game now?') && post({ type: 'end' })}>End game</button>}
         <button className="ghost" onClick={() => confirm('Reset the table? Everyone is removed.') && post({ type: 'reset' })}>Reset table</button>
       </div>}
