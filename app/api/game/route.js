@@ -167,7 +167,7 @@ export async function POST(req) {
     if (b.type === 'create') {
       const pub = !!b.public, code = String(b.code ?? '').trim();
       if (!pub && !code) throw new Error('Private tables need a code');
-      const game = newGame({ name: String(b.name ?? '').trim().slice(0, 24) || 'Table', public: pub, code: pub ? '' : code.slice(0, 40), showLog: b.log !== false, timeout: b.timeout });
+      const game = newGame({ name: String(b.name ?? '').trim().slice(0, 24) || 'Table', public: pub, code: pub ? '' : code.slice(0, 40), showLog: b.log !== false, timeout: b.timeout, deckSize: b.deckSize });
       for (let i = 0; i < 5; i++) {
         const id = newId();
         if (!(await db().cas(K(id), 0, encode(1, game), ACTIVE_TTL))) continue; // id already taken: pick another

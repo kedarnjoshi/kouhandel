@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ANIMALS, newGame, newPlayer, apply, tick, view, targets, score, cheapest, clampTimeout } from '../lib/engine';
+import { ANIMALS, newGame, newPlayer, apply, tick, view, targets, score, cheapest, clampTimeout, clampDeck, composition, countsOf } from '../lib/engine';
 
 const TYPES = Object.keys(ANIMALS);
 const START = [0, 0, 10, 10, 10, 10, 50];
@@ -9,7 +9,7 @@ const sorted = a => [...a].sort((x, y) => x - y);
 const total = s => s.players.reduce((n, p) => n + sum(p.money), 0);
 const zero = o => ({ ...Object.fromEntries(TYPES.map(t => [t, 0])), ...o });
 
-function lobby(n = 3) { const s = newGame(); for (let i = 0; i < n; i++) s.players.push(newPlayer('P' + i, 'tok' + i)); return s; }
+function lobby(n = 3, o = {}) { const s = newGame(o); for (let i = 0; i < n; i++) s.players.push(newPlayer('P' + i, 'tok' + i)); return s; }
 // Started game, player 0 to move. `draws` is the order cards will be drawn from the deck.
 function game(n = 3, draws = ['duck', 'duck', 'duck']) { const s = lobby(n); apply(s, 0, { type: 'start' }); s.turn = 0; s.deck = [...draws].reverse(); return s; }
 const give = (s, i, animals) => Object.assign(s.players[i].animals, animals);
@@ -697,6 +697,56 @@ describe('kicking and leaving mid-game', () => {
     act(s, 0, { type: 'kick', target: 1 }); expect(s.players.map(p => p.name)).toEqual(['P0', 'P2']);
   });
 });
+describe('smaller deck (secret sets of 2 to 4)', () => {
+  // The deck size is a whole number from 20 to 40; anything else falls back to the normal 40.
+  it('clamps the deck size to 20-40, defaulting to 40', () => {
+    expect(clampDeck(30)).toBe(30); expect(clampDeck(5)).toBe(20); expect(clampDeck(99)).toBe(40); expect(clampDeck(27.6)).toBe(28);
+    for (const v of [undefined, null, '', 'abc', NaN]) expect(clampDeck(v)).toBe(40);
+    expect(newGame().deckSize).toBe(40); expect(newGame({ deckSize: 22 }).deckSize).toBe(22);
+  });
+  // Every deck size gets 2 to 4 cards of each type, adding up exactly.
+  it('builds compositions of 2-4 per type for every size', () => {
+    const r = rng(7);
+    for (let n = 20; n <= 40; n++) for (let k = 0; k < 20; k++) {
+      const c = composition(n, r);
+      expect(Object.keys(c)).toEqual(TYPES);
+      expect(Object.values(c).every(x => x >= 2 && x <= 4)).toBe(true);
+      expect(sum(Object.values(c))).toBe(n);
+    }
+  });
+  // With 39 cards exactly one type has 3; each of the 10 possible decks is about equally likely.
+  it('picks every possible deck with equal chance', () => {
+    const r = rng(11), seen = Object.fromEntries(TYPES.map(t => [t, 0]));
+    for (let i = 0; i < 5000; i++) { const c = composition(39, r); seen[TYPES.find(t => c[t] === 3)]++; }
+    for (const t of TYPES) { expect(seen[t]).toBeGreaterThan(400); expect(seen[t]).toBeLessThan(600); }
+  });
+  // Starting a smaller game deals exactly that many animals, matching the secret composition.
+  it('deals a deck of the chosen size', () => {
+    const s = lobby(3, { deckSize: 26 }); apply(s, 0, { type: 'start' });
+    expect(s.deck).toHaveLength(26);
+    for (const t of TYPES) expect(s.deck.filter(x => x === t)).toHaveLength(s.counts[t]);
+  });
+  // Nobody can see how many of each animal there are until the game is over; the normal deck shows 4 of each.
+  it('keeps the composition secret until the end', () => {
+    const s = lobby(3, { deckSize: 26 }); apply(s, 0, { type: 'start' });
+    expect(view(s, 0).counts).toBeNull(); expect(view(s, -1).counts).toBeNull(); expect(view(s, 0).deckSize).toBe(26);
+    act(s, 0, { type: 'end' }); expect(view(s, -1).counts).toEqual(s.counts);
+    const n = lobby(3); apply(n, 0, { type: 'start' }); expect(view(n, 1).counts).toEqual(Object.fromEntries(TYPES.map(t => [t, 4])));
+  });
+  // A set is all the copies of a type: owning both pigs of a 2-pig deck scores, 3 of 4 horses does not.
+  it('scores sets of whatever size the deck has', () => {
+    const counts = { ...Object.fromEntries(TYPES.map(t => [t, 4])), pig: 2, cat: 3 };
+    expect(score({ animals: zero({ pig: 2, cat: 3, horse: 3 }) }, counts)).toEqual({ sets: 2, score: (650 + 90) * 2 });
+    const s = game(); s.counts = counts; give(s, 0, { pig: 2 }); act(s, 0, { type: 'end' });
+    expect(view(s, -1).players[0]).toMatchObject({ sets: 1, score: 650 });
+  });
+  // With 2 money mules in the deck only the first two payouts (50, 100) ever happen.
+  it('pays out only as many mules as the deck has', () => {
+    const s = game(3, ['mule', 'mule']); s.counts = { ...s.counts, mule: 2 };
+    act(s, 0, { type: 'auction' }); expire(s); act(s, 1, { type: 'auction' }); expire(s);
+    expect(s.mules).toBe(2); expect(sum(s.players[2].money)).toBe(90 + 50 + 100);
+  });
+});
 
 describe('scoring', () => {
   // Score = (sum of completed set values) x (number of sets); horse+cow+dog = 1960 x 3 = 5880.
@@ -779,19 +829,20 @@ function step(s, r) {
 }
 function invariants(s) {
   for (const k of TYPES) {
-    const n = s.deck.filter(x => x === k).length + s.players.reduce((a, p) => a + p.animals[k], 0) + (s.auction && s.auction.type === k ? 1 : 0);
-    if (n !== 4) throw new Error(`${k}: ${n} cards in play`);
-    if (s.players.some(p => p.animals[k] < 0 || p.animals[k] > 4)) throw new Error(`${k}: count out of range`);
+    const n = s.deck.filter(x => x === k).length + s.players.reduce((a, p) => a + p.animals[k], 0) + (s.auction && s.auction.type === k ? 1 : 0), c = countsOf(s)[k];
+    if (n !== c) throw new Error(`${k}: ${n} cards in play, expected ${c}`);
+    if (s.players.some(p => p.animals[k] < 0 || p.animals[k] > c)) throw new Error(`${k}: count out of range`);
   }
+  if (s.mules > countsOf(s).mule) throw new Error('more mules than in the deck');
   const expected = 90 * s.players.length + s.players.length * sum(MULE_PAY.slice(0, s.mules));
   if (total(s) !== expected) throw new Error(`money ${total(s)} != ${expected}`);
   if (s.players.some(p => p.money.some(c => ![0, 10, 50, 100, 200, 500].includes(c)))) throw new Error('bad card value');
 }
 describe('random full games', () => {
   for (let seed = 1; seed <= 60; seed++) {
-    // Plays a full game with random legal moves and checks after every step that each animal has 4 copies in play and total money is correct; the game finishes or the host ends it.
+    // Plays a full game (odd seeds: the normal deck, even seeds: a smaller one) with random legal moves and checks after every step that each animal has all its copies in play and total money is correct; the game finishes or the host ends it.
     it(`seed ${seed}: invariants hold and the game finishes`, () => {
-      const r = rng(seed), s = lobby(3 + (seed % 3)); apply(s, 0, { type: 'start' }, 0);
+      const r = rng(seed), s = lobby(3 + (seed % 3), { deckSize: seed % 2 ? 40 : 20 + seed % 20 }); apply(s, 0, { type: 'start' }, 0);
       let n = 0;
       while (s.phase !== 'over' && n++ < 4000) { step(s, r); invariants(s); }
       if (s.phase !== 'over') apply(s, 0, { type: 'end' }, 0); // endless trade ping-pong is allowed; the host ends it
@@ -802,11 +853,11 @@ describe('random full games', () => {
 });
 // ---- the same random games, with players kicked or leaving at random moments ----
 describe('random full games with kicks and leaves', () => {
-  const countAnimals = s => TYPES.map(k => s.deck.filter(x => x === k).length + s.players.reduce((a, p) => a + p.animals[k], 0) + (s.auction && s.auction.type === k ? 1 : 0));
+  const countAnimals = s => TYPES.map(k => s.deck.filter(x => x === k).length + s.players.reduce((a, p) => a + p.animals[k], 0) + (s.auction && s.auction.type === k ? 1 : 0) - countsOf(s)[k] + 4);
   for (let seed = 1; seed <= 60; seed++) {
     // Kicks (by the host) and leaves happen during auctions, payments and koehandels; money is never created or lost and every animal stays accounted for.
     it(`seed ${seed}: kicks and leaves never break the game`, () => {
-      const r = rng(1000 + seed), s = lobby(4 + (seed % 2)); apply(s, 0, { type: 'start' }, 0);
+      const r = rng(1000 + seed), s = lobby(4 + (seed % 2), { deckSize: seed % 3 ? 40 : 25 }); apply(s, 0, { type: 'start' }, 0);
       const live = () => s.players.map((p, i) => i).filter(i => !s.players[i].out);
       let n = 0, removed = 0;
       while (s.phase !== 'over' && n++ < 4000) {
