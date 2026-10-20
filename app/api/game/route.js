@@ -1,5 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID, randomInt } from 'crypto';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
 import { newGame, newPlayer, apply, tick, view, upgrade, host } from '../../../lib/engine';
 
 
@@ -45,6 +47,7 @@ function redisStore() {
     hdel: (k, ...f) => r.hdel(k, ...f),
     expire: (k, sec) => r.expire(k, sec),
     beat: (room, seen, f, val, ttl) => { const p = r.pipeline().hset(seen, { [f]: String(val) }).expire(seen, ACTIVE_TTL); if (ttl) p.expire(room, ttl); return p.exec(); }, // one HTTP call
+    keep: (name, json, ttl) => r.pipeline().set('log:' + name, json, { ex: ttl }).lpush('log:index', name).ltrim('log:index', 0, 999).exec(), // a finished game's log, one HTTP call
   };
 }
 function memStore() { // local dev fallback when no Redis is configured (single process only)
@@ -67,6 +70,7 @@ function memStore() { // local dev fallback when no Redis is configured (single 
     hdel: async (k, ...f) => { for (const x of f) delete kv[k]?.[x]; },
     expire,
     beat: async (room, seen, f, val, ttl) => { (kv[seen] ||= {})[f] = String(val); await expire(seen, ACTIVE_TTL); if (ttl) await expire(room, ttl); },
+    keep: async () => {}, // locally the log files are enough
   };
 }
 const store = url ? redisStore() : memStore();
@@ -91,6 +95,18 @@ async function load(id) {
   if (!d) throw notFound();
   return d;
 }
+// Game logs, for analysing how people and bots play: the full state of every started game, hidden cards and secret
+// amounts included (player tokens left out). Every change rewrites games/<room>-<game>.json in the server's folder
+// (where the disk is read-only, as on Vercel, that fails quietly). With Redis, each finished game is also kept there
+// for 30 days: one pipelined call per game (log:<room>-<game>, newest first in log:index), downloaded with
+// agent/scripts/fetchlogs.mjs.
+const LOG_DIR = path.join(process.cwd(), 'games'), LOG_TTL = 30 * 86400, LOGGING = process.env.NODE_ENV !== 'test';
+function logGame(id, s, ended) {
+  if (!LOGGING || s.phase === 'lobby' || !s.seed) return;
+  const name = `${id}-${s.seed}`, json = JSON.stringify({ ...s, savedAt: new Date().toISOString(), players: s.players.map(({ token, ...p }) => p) });
+  mkdir(LOG_DIR, { recursive: true }).then(() => writeFile(path.join(LOG_DIR, name + '.json'), json)).catch(() => {});
+  if (ended) db().keep(name, json, LOG_TTL).catch(() => {});
+}
 // Read-modify-write with retry. fn returns [newState, result]; newState null means "nothing to save".
 // `ready` is a state already loaded and changed by the caller: it is tried first, so the work is not done twice.
 async function mutate(id, fn, ready) {
@@ -102,7 +118,9 @@ async function mutate(id, fn, ready) {
       [next, out] = fn(d.s);
       if (!next) return { v, s: d.s, out };
     }
-    if (await db().cas(K(id), tag, encode(v + 1, next), ttlFor(next))) return { v: v + 1, s: next, out };
+    const ended = next.phase === 'over' && !next.logged; // the game just finished: keep it (once)
+    if (ended) next.logged = true;
+    if (await db().cas(K(id), tag, encode(v + 1, next), ttlFor(next))) { logGame(id, next, ended); return { v: v + 1, s: next, out }; }
     await new Promise(res => setTimeout(res, 20 + Math.random() * 60 * (i + 1))); // someone else wrote first: retry
   }
   throw new HttpError('The table is busy, please try again', 503);

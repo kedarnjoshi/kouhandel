@@ -878,3 +878,38 @@ describe('random full games with kicks and leaves', () => {
     });
   }
 });
+
+describe('pause', () => {
+  // Only the host can pause a running game; while paused nothing happens: no timeouts, no moves.
+  it('host pauses: clocks stop and moves are refused', () => {
+    const s = game(3, ['cow', 'pig']); s.due = 2000;
+    expect(() => act(s, 1, { type: 'pause' }, 1000)).toThrow(/Only the host/);
+    act(s, 0, { type: 'pause' }, 1000);
+    expect(view(s, 2).paused).toMatchObject({ by: 0, name: 'P0', at: 1000 });
+    expect(s.log[0]).toMatch(/P0 paused the game/);
+    tick(s, 99000); expect(s.turn).toBe(0); expect(s.deck.length).toBe(2); // the turn did not time out
+    expect(() => act(s, 0, { type: 'auction' }, 2000)).toThrow(/paused/);
+    expect(() => act(s, 0, { type: 'pause' }, 2000)).toThrow(/already paused/);
+    expect(() => act(s, 1, { type: 'resume' }, 2000)).toThrow(/Only the host/);
+    const lobbyGame = lobby(3); expect(() => act(lobbyGame, 0, { type: 'pause' })).toThrow(/not running/);
+  });
+  // Resuming gives everyone the time they had left when the game was paused.
+  it('resume shifts the clocks by the length of the pause', () => {
+    const s = game(3, ['cow', 'pig']); s.due = 2000;
+    act(s, 0, { type: 'pause' }, 1500); act(s, 0, { type: 'resume' }, 61500);
+    expect(s.paused).toBeUndefined(); expect(s.due).toBe(62000); expect(s.log[0]).toMatch(/resumed/);
+    tick(s, 61999); expect(s.turn).toBe(0);
+    tick(s, 62000); expect(s.turn).toBe(1);
+    const t = open(['cow']); act(t, 1, { type: 'bid', amount: 20 }, 1000); // bidding deadline 11000
+    act(t, 0, { type: 'pause' }, 5000); tick(t, 50000); expect(t.auction.stage).toBe('bidding');
+    act(t, 0, { type: 'resume' }, 50000); expect(t.auction.deadline).toBe(56000);
+    tick(t, 55999); expect(t.auction.stage).toBe('bidding'); tick(t, 56000); expect(t.auction.stage).toBe('decide');
+  });
+  // Leaving still works while paused, and ending the game clears the pause.
+  it('players can leave while paused; the host can end a paused game', () => {
+    const s = game(4, ['cow']);
+    act(s, 0, { type: 'pause' }, 1000);
+    act(s, 2, { type: 'leave' }, 1100); expect(s.players[2].out).toBe(true);
+    act(s, 0, { type: 'end' }, 1200); expect(s.phase).toBe('over'); expect(s.paused).toBeUndefined();
+  });
+});

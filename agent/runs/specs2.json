@@ -1,0 +1,188 @@
+{
+ "easyA": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.8568,
+   "mu": 508.3,
+   "mDec": 0.08,
+   "naive": 1,
+   "shade": 0.85,
+   "khBias": -0.02,
+   "style": 1.5
+  },
+  "noise": 0.3,
+  "slip": 0.12
+ },
+ "easyB": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.8568,
+   "mu": 508.3,
+   "mDec": 0.1,
+   "naive": 1,
+   "shade": 0.8,
+   "khBias": -0.03,
+   "style": 1.5
+  },
+  "noise": 0.4,
+  "slip": 0.2
+ },
+ "easyC": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.8568,
+   "mu": 508.3,
+   "mDec": 0.05,
+   "naive": 1,
+   "shade": 0.9,
+   "style": 1.5
+  },
+  "noise": 0.25,
+  "slip": 0.08
+ },
+ "medA": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.8568,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "style": 1
+  },
+  "noise": 0.2,
+  "slip": 0.06
+ },
+ "medB": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.8568,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "naive": 1,
+   "style": 1
+  },
+  "noise": 0.15,
+  "slip": 0.05
+ },
+ "hardS": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.8568,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "style": 0.6,
+   "adapt": 4
+  }
+ },
+ "insS": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.8568,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "solve": 1,
+   "style": 0.3,
+   "adapt": 4
+  }
+ },
+ "s6": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.6,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "solve": 1,
+   "shade": 1.1
+  }
+ },
+ "insA12": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.6,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "shade": 1.15,
+   "solve": 1,
+   "solveK": 13,
+   "solveIt": 80,
+   "solveEps": 0.04,
+   "habits": 0.3,
+   "style": 0.3,
+   "adapt": 12
+  }
+ },
+ "insA6": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.6,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "shade": 1.15,
+   "solve": 1,
+   "solveK": 13,
+   "solveIt": 80,
+   "solveEps": 0.04,
+   "habits": 0.3,
+   "style": 0.3,
+   "adapt": 6
+  }
+ },
+ "ins3": {
+  "kind": "expert",
+  "th": {
+   "tau": 1.432,
+   "tau1": 68.93,
+   "rho": 1.289,
+   "gamma": 1.106,
+   "delta": 0.6,
+   "mu": 508.3,
+   "mDec": 0.02,
+   "shade": 1.15,
+   "solve": 1,
+   "solveK": 13,
+   "solveIt": 80,
+   "solveEps": 0.04,
+   "habits": 0.3,
+   "style": 0.3
+  }
+ }
+}
