@@ -23,7 +23,7 @@ function pollDelay(g, skew) {
   const soon = at => Math.max(400, at - (Date.now() + skew) + 300); // look right after a deadline passes
   if (g.phase === 'auction' && g.auction.stage === 'bidding') return Math.min(g.me === g.auction.auctioneer ? 2500 : 1500, soon(g.auction.deadline));
   const mine = g.waiting && g.waiting.p === g.me; // nobody else can move: only check now and then (kicks, the clock)
-  return Math.min(mine ? 10000 : 2500, g.due ? soon(g.due) : 10000);
+  return Math.min(mine ? 10000 : 2500, g.due ? soon(g.due) : 10000, g.next ? soon(g.next) : 10000); // next: when a bot moves
 }
 async function api(query = '', body) { // never throws on bad JSON; network errors still throw
   const res = await fetch('/api/game' + query, body
@@ -73,6 +73,27 @@ function Info({ label, children }) {
       <button type="button" className="info-btn" aria-label={label} aria-expanded={open} onClick={() => setOpen(o => !o)}>i</button>
       <span role="tooltip" className="tip">{children}</span>
     </span>
+  );
+}
+// The bots a host can add. Kept here (not imported from the bots) so the bot code stays on the server.
+const BOTS = [
+  ['easy', 'Easy', 'Knows the rules and roughly what animals are worth, but misjudges prices and makes careless moves. A fair match for someone in their first games.'],
+  ['medium', 'Medium', 'Sensible, steady play with the odd slip.'],
+  ['hard', 'Hard', "Tuned over many thousands of games against itself: chases sets, keeps track of everyone's money and bluffs in koehandels."],
+  ['insane', 'Insane', 'Plays like Hard, but before every big decision it plays out hundreds of possible futures and picks what wins most often.'],
+  ['random', 'Random', 'Makes random (but legal) moves.'],
+  ['confusing', 'Confusing', 'Plays like a sensible player on a very strange day: generous koehandel offers, lowball offers it lets slide, paying with big notes, bidding up animals it does not need. It is not trying to lose, but its gifts shift the money around the table in ways nobody sees coming. Expect the unexpected.'],
+];
+function AddBot({ post, full }) {
+  const [level, setLevel] = useState('medium');
+  return (
+    <div className="row addbot">
+      <label className="field">Add a bot
+        <select value={level} onChange={e => setLevel(e.target.value)}>{BOTS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
+      <Info label="About the bot levels"><span className="tip-list">{BOTS.map(([k, n, d]) => <span key={k}><b>{n}:</b> {d}</span>)}</span></Info>
+      <button className="ghost" disabled={full} onClick={() => post({ type: 'addbot', level })}>Add bot</button>
+      {full && <span className="muted">The table is full.</span>}
+    </div>
   );
 }
 const COLORS = ['#e07a5f', '#81b29a', '#f2cc8f', '#7aa5d8', '#c792ea'];
@@ -309,7 +330,7 @@ export default function Page() {
   const w = g.waiting, clock = w && g.due ? secsTo(g.due) : null;
   const clockLine = clock !== null && <p className={`clock${w.p === me ? ' mine' : ''}${clock <= 10 ? ' low' : ''}`}>{w.p === me ? 'Your' : `${name(w.p)}'s`} time: {clock}s</p>;
   const myTurn = me >= 0 && g.turn === me;
-  const hostIdx = P.findIndex(p => !p.out), isHost = me >= 0 && me === hostIdx;
+  const hostIdx = g.host ?? P.findIndex(p => !p.out && !p.bot), isHost = me >= 0 && me === hostIdx;
   const canKick = i => i !== me && !P[i].out && g.phase !== 'over' && me >= 0 && !mine.out && (isHost || (g.phase !== 'lobby' && P[i].strikes >= 2));
   const header = (
     <header className="topbar">
@@ -339,7 +360,7 @@ export default function Page() {
         <input placeholder="Your name" maxLength={16} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} onKeyDown={e => e.key === 'Enter' && join()} />
         <button onClick={join}>Join table</button>
         {err && <p className="err">{err}</p>}{net && <p className="err">{net}</p>}
-        <p className="muted">At the table ({P.length}/5): {P.map(p => p.name).join(', ') || 'nobody yet'}.{!g.public && ' Already joined? Enter the same name to get back in.'}</p>
+        <p className="muted">At the table ({P.length}/5): {P.map(p => p.name + (p.bot ? ` (${p.bot} bot)` : '')).join(', ') || 'nobody yet'}.{!g.public && ' Already joined? Enter the same name to get back in.'}</p>
       </section>
     </main>
   );
@@ -347,7 +368,10 @@ export default function Page() {
   let panel = null;
   if (g.phase === 'lobby') panel = (<>
     <h2>Waiting for players ({P.length}/5)</h2>
-    {isHost ? <p><button disabled={P.length < 3} onClick={() => post({ type: 'start' })}>Start game</button> {P.length < 3 && <span className="muted">Needs 3 players</span>}</p> : <p>Waiting for {name(0)} to start.</p>}
+    {isHost ? <>
+      <p><button disabled={P.length < 3} onClick={() => post({ type: 'start' })}>Start game</button> {P.length < 3 && <span className="muted">Needs 3 players (bots count)</span>}</p>
+      <AddBot post={post} full={P.length >= 5} />
+    </> : <p>Waiting for {name(hostIdx)} to start.</p>}
     <p className="muted">Settings: {g.timeout}s per move · game log {g.showLog ? 'on' : 'off'} · {g.deckSize < 40 ? `${g.deckSize} animals, secret sets of 2 to 4` : 'normal deck of 40'}.</p>
     <p className="muted">Share the table ID <b>{room}</b>{!g.public && ' and the code'} with your friends. Players who close the page before the start lose their seat.</p>
   </>);
@@ -417,7 +441,7 @@ export default function Page() {
         {P.map((p, i) => (
           <div key={i} className={`panel pl${(g.waiting ? g.waiting.p : a?.auctioneer) === i ? ' turn' : ''}${i === me ? ' me' : ''}${p.out ? ' out' : ''}`}>
             <div className="who"><Avatar i={i} name={p.name} /><div className="grow"><b>{p.name}{i === me ? ' (you)' : ''}</b>
-              <span className="muted">{p.out ? 'out of the game · animals up for grabs' : <>{i === hostIdx ? 'host · ' : ''}{g.phase === 'lobby' ? 'ready' : `${p.cards} money card${p.cards === 1 ? '' : 's'}`}{p.strikes >= 2 ? ` · missed ${p.strikes} moves` : ''}</>}</span></div>
+              <span className="muted">{p.out ? 'out of the game · animals up for grabs' : <>{p.bot ? <span className="botTag">{cap(p.bot)} bot</span> : ''}{i === hostIdx ? 'host · ' : ''}{g.phase === 'lobby' ? 'ready' : `${p.cards} money card${p.cards === 1 ? '' : 's'}`}{p.strikes >= 2 ? ` · missed ${p.strikes} moves` : ''}</>}</span></div>
               {canKick(i) && <button className="ghost small kick" onClick={() => kick(i)}>{g.phase === 'lobby' ? 'Remove' : 'Kick'}</button>}</div>
             <div className="row">{Object.entries(p.animals).filter(([, n]) => n > 0).map(([k, n]) => <Animal key={k} t={k} small badge={n} gold={!!g.counts && n === g.counts[k]} />)}</div>
           </div>

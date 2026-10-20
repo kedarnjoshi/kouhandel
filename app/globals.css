@@ -45,6 +45,9 @@ select{width:auto;margin-left:8px;cursor:pointer} select option{background:var(-
 .info.open .tip{display:block}
 @media (hover:hover){.info:hover .tip{display:block}}
 
+.tip-list{display:flex;flex-direction:column;gap:8px}
+.botTag{display:inline-block;margin-right:6px;padding:0 7px;border-radius:999px;background:#7aa5d82e;color:var(--sky);font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.addbot{margin-top:6px}
 /* layout */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);backdrop-filter:blur(4px)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center} .row.nowrap{flex-wrap:nowrap}

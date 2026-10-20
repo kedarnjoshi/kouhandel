@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID, randomInt } from 'crypto';
-import { newGame, newPlayer, apply, tick, view, upgrade } from '../../../lib/engine';
+import { newGame, newPlayer, apply, tick, view, upgrade, host } from '../../../lib/engine';
 
 
 export const dynamic = 'force-dynamic';
@@ -92,11 +92,16 @@ async function load(id) {
   return d;
 }
 // Read-modify-write with retry. fn returns [newState, result]; newState null means "nothing to save".
-async function mutate(id, fn) {
+// `ready` is a state already loaded and changed by the caller: it is tried first, so the work is not done twice.
+async function mutate(id, fn, ready) {
   for (let i = 0; i < 10; i++) {
-    const { v, tag, s } = await load(id);
-    const [next, out] = fn(s);
-    if (!next) return { v, s, out };
+    let v, tag, next, out;
+    if (i === 0 && ready) ({ v, tag, s: next } = ready);
+    else {
+      const d = await load(id); ({ v, tag } = d);
+      [next, out] = fn(d.s);
+      if (!next) return { v, s: d.s, out };
+    }
     if (await db().cas(K(id), tag, encode(v + 1, next), ttlFor(next))) return { v: v + 1, s: next, out };
     await new Promise(res => setTimeout(res, 20 + Math.random() * 60 * (i + 1))); // someone else wrote first: retry
   }
@@ -147,15 +152,15 @@ export async function GET(req) {
       }
       return Response.json(out);
     }
-    let { v, s } = await load(room);
+    let { v, tag, s } = await load(room);
     const pi = find(s, tok);
     if (q.get('hb') && pi >= 0 && !s.players[pi].out) { // heartbeat from a seated player
       await db().beat(K(room), SEEN(room), tok, now, s.phase === 'over' ? 0 : ACTIVE_TTL); // a finished game is not kept alive by people looking at it
-      if (s.phase === 'lobby') ({ v, s } = (await pruneLobby(room, s, now)) || { v, s });
+      if (s.phase === 'lobby') { const r = await pruneLobby(room, s, now); if (r) ({ v, s } = r, tag = String(v)); }
     }
     const before = JSON.stringify(s);
-    tick(s, Date.now()); // the auction timer is enforced lazily, by whoever looks first
-    if (JSON.stringify(s) !== before) ({ v, s } = await mutate(room, x => { tick(x, Date.now()); return [x]; }));
+    tick(s, Date.now()); // timers and bot moves happen lazily, triggered by whoever looks first
+    if (JSON.stringify(s) !== before) ({ v, s } = await mutate(room, x => { tick(x, Date.now()); return [x]; }, { v, tag, s }));
     return Response.json({ ...view(s, find(s, tok)), v });
   } catch (e) { return fail(e, 500); }
 }
@@ -183,6 +188,7 @@ export async function POST(req) {
         if (!name) throw new Error('Enter a name');
         const p = s.players.find(p => p.name.toLowerCase() === name.toLowerCase());
         if (p) { // same name: rejoin allowed in private rooms only
+          if (p.bot) throw new Error('A bot at this table already has that name');
           if (s.public) throw new Error('That name is taken at this public table');
           return [null, { token: p.token }];
         }
@@ -202,7 +208,7 @@ export async function POST(req) {
     const { out } = await mutate(b.room, s => {
       const pi = find(s, b.token);
       if (pi < 0) throw new Error('You are not at this table');
-      if (b.type === 'reset') { if (pi !== s.players.findIndex(p => !p.out)) throw new Error('Host only'); return [newGame(s), { ok: 1 }]; }
+      if (b.type === 'reset') { if (pi !== host(s)) throw new Error('Host only'); return [newGame(s), { ok: 1 }]; }
       return [apply(s, pi, b), { ok: 1 }];
     });
     return Response.json(out);
