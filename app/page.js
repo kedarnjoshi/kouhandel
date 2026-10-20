@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ANIMALS } from '../lib/engine';
+import { ANIMALS } from '../lib/rules'; // not the engine: keeps the game logic and bots out of the browser bundle
 
 const cap = s => s[0].toUpperCase() + s.slice(1);
 const nameOf = t => (t === 'mule' ? 'Money mule' : cap(t)); // display name of an animal
