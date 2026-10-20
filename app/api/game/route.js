@@ -1,12 +1,17 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID, randomInt } from 'crypto';
-import { newGame, newPlayer, apply, tick, view } from '../../../lib/engine';
+import { newGame, newPlayer, apply, tick, view, upgrade } from '../../../lib/engine';
+
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-const TTL = 86400; // abandoned rooms vanish after 24h
+// Redis deletes rooms by itself: a game expires 10 minutes after its last move or player heartbeat (so a table
+// everyone left ends and disappears). A finished game is deleted 15 minutes after it ended, so players can still
+// look at the scores, and it leaves the public list after 2 minutes.
+const ACTIVE_TTL = 600, OVER_TTL = 900, LISTED_AFTER_END = 120000;
+const ttlFor = s => (s.phase === 'over' ? OVER_TTL : ACTIVE_TTL);
 
 // A room is stored as "<version>|<json>". A write only lands if the version is still the one we read
 // (version 0 = "must not exist yet", L = "still in the old plain-JSON format"), so simultaneous requests
@@ -27,7 +32,7 @@ function redisStore() {
   return {
     get: k => r.get(k),
     mget: ks => (ks.length ? r.mget(...ks) : []),
-    cas: async (k, v, val) => Number(await r.eval(CAS, [k], [String(v), val, String(TTL)])) === 1,
+    cas: async (k, v, val, ttl) => Number(await r.eval(CAS, [k], [String(v), val, String(ttl)])) === 1,
     sadd: (k, m) => r.sadd(k, m),
     srem: (k, m) => r.srem(k, m),
     smembers: async k => (await r.smembers(k)).map(String),
@@ -39,17 +44,20 @@ function redisStore() {
     },
     hdel: (k, ...f) => r.hdel(k, ...f),
     expire: (k, sec) => r.expire(k, sec),
+    beat: (room, seen, f, val, ttl) => { const p = r.pipeline().hset(seen, { [f]: String(val) }).expire(seen, ACTIVE_TTL); if (ttl) p.expire(room, ttl); return p.exec(); }, // one HTTP call
   };
 }
 function memStore() { // local dev fallback when no Redis is configured (single process only)
-  const kv = (globalThis.__kh ||= {}), sets = (globalThis.__khs ||= {});
+  const kv = (globalThis.__kh ||= {}), sets = (globalThis.__khs ||= {}), exp = (globalThis.__khx ||= {});
+  const live = k => { if (exp[k] && exp[k] <= Date.now()) { delete kv[k]; delete exp[k]; } return kv[k] ?? null; };
+  const expire = async (k, sec) => { if (kv[k] != null) exp[k] = Date.now() + sec * 1000; };
   return {
-    get: async k => kv[k] ?? null,
-    mget: async ks => ks.map(k => kv[k] ?? null),
-    cas: async (k, v, val) => {
-      const cur = kv[k], ver = cur == null ? null : /^\d+\|/.test(cur) ? cur.split('|', 1)[0] : 'L';
+    get: async k => live(k),
+    mget: async ks => ks.map(live),
+    cas: async (k, v, val, ttl) => {
+      const cur = live(k), ver = cur == null ? null : /^\d+\|/.test(cur) ? cur.split('|', 1)[0] : 'L';
       if (String(v) === '0' ? cur != null : ver !== String(v)) return false;
-      kv[k] = val; return true;
+      kv[k] = val; exp[k] = Date.now() + ttl * 1000; return true;
     },
     sadd: async (k, m) => { (sets[k] ||= new Set()).add(m); },
     srem: async (k, m) => { sets[k]?.delete(m); },
@@ -57,7 +65,8 @@ function memStore() { // local dev fallback when no Redis is configured (single 
     hset: async (k, f, val) => { (kv[k] ||= {})[f] = String(val); },
     hgetall: async k => ({ ...(kv[k] || {}) }),
     hdel: async (k, ...f) => { for (const x of f) delete kv[k]?.[x]; },
-    expire: async () => {},
+    expire,
+    beat: async (room, seen, f, val, ttl) => { (kv[seen] ||= {})[f] = String(val); await expire(seen, ACTIVE_TTL); if (ttl) await expire(room, ttl); },
   };
 }
 const store = url ? redisStore() : memStore();
@@ -73,8 +82,8 @@ const encode = (v, s) => v + '|' + JSON.stringify(s);
 function decode(raw) {
   if (typeof raw !== 'string') return null;
   const m = /^(\d+)\|/.exec(raw);
-  if (m) return { v: Number(m[1]), tag: m[1], s: JSON.parse(raw.slice(m[0].length)) };
-  return raw[0] === '{' ? { v: 0, tag: 'L', s: JSON.parse(raw) } : null; // saved by the previous version of the app
+  if (m) return { v: Number(m[1]), tag: m[1], s: upgrade(JSON.parse(raw.slice(m[0].length))) };
+  return raw[0] === '{' ? { v: 0, tag: 'L', s: upgrade(JSON.parse(raw)) } : null; // saved by the previous version of the app
 }
 const notFound = () => new HttpError('Room not found', 404);
 async function load(id) {
@@ -88,17 +97,18 @@ async function mutate(id, fn) {
     const { v, tag, s } = await load(id);
     const [next, out] = fn(s);
     if (!next) return { v, s, out };
-    if (await db().cas(K(id), tag, encode(v + 1, next))) return { v: v + 1, s: next, out };
+    if (await db().cas(K(id), tag, encode(v + 1, next), ttlFor(next))) return { v: v + 1, s: next, out };
     await new Promise(res => setTimeout(res, 20 + Math.random() * 60 * (i + 1))); // someone else wrote first: retry
   }
   throw new HttpError('The table is busy, please try again', 503);
 }
 
-// Lobby presence: each poll is a heartbeat. Seats of players who stop polling are freed before the game starts.
-// Closing the tab sends a "bye" that makes the seat expire after a short grace period (so a page refresh keeps it).
+// Presence: seated players add hb=1 to a poll at most every 20s. That heartbeat keeps the room alive (see ACTIVE_TTL)
+// and, in the lobby, frees the seats of players who stopped polling. Closing the tab sends a "bye" that makes the
+// seat expire after a short grace period (so a page refresh keeps it).
 const SEEN = id => K(id) + ':seen', LOBBY_TIMEOUT = 90000, BYE_GRACE = 8000;
 async function pruneLobby(id, s, now) {
-  if (s.phase !== 'lobby' || !s.players.length) return null;
+  if (s.phase !== 'lobby' || s.players.length < 2) return null;
   const seen = await db().hgetall(SEEN(id));
   const stale = s.players.filter(p => seen[p.token] && now - Number(seen[p.token]) > LOBBY_TIMEOUT).map(p => p.token);
   if (!stale.length) return null;
@@ -112,26 +122,36 @@ async function pruneLobby(id, s, now) {
   return r;
 }
 
+// Soft per-instance limit so a buggy or malicious client cannot hammer the API (the real client polls far slower).
+const hits = new Map(), MAX_PER_SEC = process.env.NODE_ENV === 'test' ? Infinity : 5;
+function limited(key, now) {
+  const h = hits.get(key);
+  if (!h || now - h[0] > 1000) { if (hits.size > 5000) hits.clear(); hits.set(key, [now, 1]); return false; }
+  return ++h[1] > MAX_PER_SEC;
+}
+
 const fail = (e, status) => Response.json({ error: e.message || 'Server error' }, { status: e.status || status });
 
 export async function GET(req) {
   const q = new URL(req.url).searchParams, room = q.get('room');
   try {
-    if (room === null) { // list public rooms
+    const tok = q.get('token'), now = Date.now();
+    if (limited(tok || req.headers.get('x-forwarded-for') || 'anon', now)) return Response.json({ error: 'Too many requests' }, { status: 429 });
+    if (room === null) { // list public rooms (2 Redis commands, plus cleanup of expired ones)
       const ids = await db().smembers('rooms'), raws = await db().mget(ids.map(K)), out = [];
       for (let i = 0; i < ids.length; i++) {
-        let d = decode(raws[i]);
+        const d = decode(raws[i]);
         if (!d) { await db().srem('rooms', ids[i]); continue; }
-        d = (await pruneLobby(ids[i], d.s, Date.now()).catch(() => null)) || d;
-        out.push({ id: ids[i], name: d.s.name, players: d.s.players.length, phase: d.s.phase });
+        if (d.s.phase === 'over' && !(now - d.s.endedAt < LISTED_AFTER_END)) continue; // finished tables leave the list after 2 minutes
+        out.push({ id: ids[i], name: d.s.name, players: d.s.players.filter(p => !p.out).length, phase: d.s.phase });
       }
       return Response.json(out);
     }
     let { v, s } = await load(room);
-    const tok = q.get('token'), now = Date.now();
-    if (s.phase === 'lobby') {
-      if (find(s, tok) >= 0) await db().hset(SEEN(room), tok, now);
-      ({ v, s } = (await pruneLobby(room, s, now)) || { v, s });
+    const pi = find(s, tok);
+    if (q.get('hb') && pi >= 0 && !s.players[pi].out) { // heartbeat from a seated player
+      await db().beat(K(room), SEEN(room), tok, now, s.phase === 'over' ? 0 : ACTIVE_TTL); // a finished game is not kept alive by people looking at it
+      if (s.phase === 'lobby') ({ v, s } = (await pruneLobby(room, s, now)) || { v, s });
     }
     const before = JSON.stringify(s);
     tick(s, Date.now()); // the auction timer is enforced lazily, by whoever looks first
@@ -150,7 +170,7 @@ export async function POST(req) {
       const game = newGame({ name: String(b.name ?? '').trim().slice(0, 24) || 'Table', public: pub, code: pub ? '' : code.slice(0, 40), showLog: b.log !== false, timeout: b.timeout });
       for (let i = 0; i < 5; i++) {
         const id = newId();
-        if (!(await db().cas(K(id), 0, encode(1, game)))) continue; // id already taken: pick another
+        if (!(await db().cas(K(id), 0, encode(1, game), ACTIVE_TTL))) continue; // id already taken: pick another
         if (pub) await db().sadd('rooms', id);
         return Response.json({ room: id });
       }
@@ -171,8 +191,7 @@ export async function POST(req) {
         const np = newPlayer(name, randomUUID()); s.players.push(np);
         return [s, { token: np.token }];
       });
-      await db().hset(SEEN(b.room), out.token, Date.now());
-      await db().expire(SEEN(b.room), TTL);
+      await db().beat(K(b.room), SEEN(b.room), out.token, Date.now(), ACTIVE_TTL);
       return Response.json(out);
     }
     if (b.type === 'bye') { // sent by the browser when the tab closes; only matters in the lobby
@@ -183,7 +202,7 @@ export async function POST(req) {
     const { out } = await mutate(b.room, s => {
       const pi = find(s, b.token);
       if (pi < 0) throw new Error('You are not at this table');
-      if (b.type === 'reset') { if (pi !== 0) throw new Error('Host only'); return [newGame(s), { ok: 1 }]; }
+      if (b.type === 'reset') { if (pi !== s.players.findIndex(p => !p.out)) throw new Error('Host only'); return [newGame(s), { ok: 1 }]; }
       return [apply(s, pi, b), { ok: 1 }];
     });
     return Response.json(out);

@@ -1,5 +1,5 @@
 {
-  "name": "kuhhandel",
+  "name": "koehandel",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -1,12 +1,12 @@
 // Lobby logic at the route-handler level, using the in-memory store (no Redis, no HTTP server).
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 let GET, POST;
 beforeAll(async () => {
   for (const k of ['KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) delete process.env[k];
   ({ GET, POST } = await import('../app/api/game/route.js'));
 });
-beforeEach(() => { for (const o of [globalThis.__kh, globalThis.__khs]) for (const k of Object.keys(o)) delete o[k]; });
+beforeEach(() => { for (const o of [globalThis.__kh, globalThis.__khs, globalThis.__khx]) for (const k of Object.keys(o || {})) delete o[k]; });
 
 const U = 'http://t/api/game';
 const post = async b => { const r = await POST(new Request(U, { method: 'POST', body: JSON.stringify(b) })); return { status: r.status, body: await r.json() }; };
@@ -254,14 +254,29 @@ describe('robustness', () => {
     const t = await join('0ld1d', 'x'); expect(t).toBeTruthy();
     expect(globalThis.__kh['kh:0ld1d']).toMatch(/^1\|/); expect((await peek('0ld1d', t)).me).toBe(0);
   });
+  // Games saved with the old animal names keep working: roosters become chickens, donkeys become money mules.
+  it('upgrades roosters and donkeys in saved games', async () => {
+    const a = await create(); const t = await fill(a); await post({ type: 'start', room: a, token: t[0] });
+    const raw = globalThis.__kh['kh:' + a], [v] = raw.split('|', 1), s = stored(a);
+    s.players[0].animals.rooster = 2; delete s.players[0].animals.chicken; s.deck = s.deck.map(x => (x === 'chicken' ? 'rooster' : x));
+    s.players[1].animals.donkey = 1; delete s.players[1].animals.mule; s.deck = s.deck.map(x => (x === 'mule' ? 'donkey' : x));
+    s.donkeys = 2; delete s.mules;
+    globalThis.__kh['kh:' + a] = v + '|' + JSON.stringify(s);
+    const view = await peek(a, t[0]);
+    expect(view.players[0].animals.chicken).toBe(2); expect(view.players[0].animals).not.toHaveProperty('rooster');
+    expect(view.players[1].animals.mule).toBe(1); expect(view.mules).toBe(2);
+    expect(JSON.stringify(stored(a))).toContain('rooster'); // nothing is rewritten until the next move…
+    await post({ type: 'auction', room: a, token: t[view.turn] });
+    expect(JSON.stringify(stored(a))).not.toMatch(/rooster|donkey/); // …which saves the upgraded game
+  });
   // Private codes are trimmed on join just like on create.
   it('trims the code on join', async () => {
     const a = await create({ public: false, code: 'k' });
     expect((await post({ type: 'join', room: a, name: 'x', code: ' k ' })).status).toBe(200);
   });
-  // The decision time limit is chosen at creation: default 60s, clamped to 30s..5min.
-  it('stores the decision time limit, clamped to 30..300 seconds', async () => {
-    const cases = [[undefined, 60], [10, 30], [90, 90], [9999, 300], ['abc', 60]];
+  // The decision time limit is chosen at creation: default 30s, clamped to 10s..2min.
+  it('stores the decision time limit, clamped to 10..120 seconds', async () => {
+    const cases = [[undefined, 30], [5, 10], [45, 45], [9999, 120], ['abc', 30]];
     for (const [timeout, want] of cases) expect((await peek(await create({ timeout }))).timeout).toBe(want);
   });
   // A table can be created with the game log turned off: only the latest event is shown, never the history.
@@ -275,42 +290,100 @@ describe('robustness', () => {
 
 describe('lobby presence', () => {
   const seen = room => globalThis.__kh['kh:' + room + ':seen'];
+  const beat = async (room, token) => (await get(`?room=${room}&token=${token}&hb=1`)).body; // a poll that carries a heartbeat
   // Leaving from the lobby frees the seat at once.
   it('leave frees the seat', async () => {
     const a = await create(); const [t0] = await fill(a, ['a', 'b']);
     expect((await post({ type: 'leave', room: a, token: t0 })).status).toBe(200);
     expect((await peek(a)).players.map(p => p.name)).toEqual(['b']);
   });
-  // A player who stops polling for too long is removed from the lobby; active players stay.
+  // A player who stops sending heartbeats for too long is removed from the lobby on someone else's heartbeat.
   it('drops players who went silent', async () => {
     const a = await create(); const [t0, t1] = await fill(a, ['a', 'b']);
     seen(a)[t0] = String(Date.now() - 100000);
-    const v = await peek(a, t1);
+    expect((await peek(a, t1)).players).toHaveLength(2); // a plain poll costs nothing extra and changes nothing
+    const v = await beat(a, t1);
     expect(v.players.map(p => p.name)).toEqual(['b']); expect(v.me).toBe(0);
     expect(v.log[0]).toMatch(/a left/);
   });
-  // Closing the tab ("bye") frees the seat after a short grace period, unless the player polls again (refresh).
+  // Closing the tab ("bye") frees the seat after a short grace period, unless the player comes back (refresh).
   it('bye frees the seat after the grace period, a refresh keeps it', async () => {
     const a = await create(); const [t0, t1] = await fill(a, ['a', 'b']);
     await post({ type: 'bye', room: a, token: t0 });
-    expect((await peek(a, t1)).players).toHaveLength(2); // still inside the grace period
-    await peek(a, t0); // the page came back (refresh)
+    expect((await beat(a, t1)).players).toHaveLength(2); // still inside the grace period
+    await beat(a, t0); // the page came back (refresh)
     seen(a)[t0] = String(Number(seen(a)[t0]) - 10000);
-    expect((await peek(a, t1)).players).toHaveLength(2);
+    expect((await beat(a, t1)).players).toHaveLength(2);
     await post({ type: 'bye', room: a, token: t0 });
     seen(a)[t0] = String(Number(seen(a)[t0]) - 10000); // grace period passes
-    expect((await peek(a, t1)).players.map(p => p.name)).toEqual(['b']);
+    expect((await beat(a, t1)).players.map(p => p.name)).toEqual(['b']);
   });
   // Presence never removes anyone once the game is running.
   it('never removes players mid-game', async () => {
     const a = await create(); const t = await fill(a); await post({ type: 'start', room: a, token: t[0] });
     seen(a)[t[1]] = '0';
-    expect((await peek(a, t[0])).players).toHaveLength(3);
+    expect((await beat(a, t[0])).players).toHaveLength(3);
   });
-  // The public list also reflects players who left.
-  it('the table list drops silent players', async () => {
-    const a = await create(); const [t0] = await fill(a, ['a', 'b']);
-    seen(a)[t0] = '0';
-    expect((await get('')).body[0].players).toBe(1);
+  // Spectators and unknown tokens cannot send heartbeats.
+  it('ignores heartbeats from people without a seat', async () => {
+    const a = await create(); await fill(a, ['a', 'b']);
+    await beat(a, 'nope'); expect(Object.keys(seen(a))).toHaveLength(2);
+  });
+});
+
+describe('automatic cleanup', () => {
+  const exp = room => globalThis.__khx['kh:' + room];
+  // Rooms expire 10 minutes after the last move or heartbeat; finished games are kept for an hour.
+  it('gives rooms a 10 minute lifetime, renewed by heartbeats, and 15 minutes once finished', async () => {
+    const a = await create(); const t = await fill(a);
+    expect(exp(a) - Date.now()).toBeGreaterThan(590000); expect(exp(a) - Date.now()).toBeLessThanOrEqual(600000);
+    globalThis.__khx['kh:' + a] = Date.now() + 1000;
+    await get(`?room=${a}&token=${t[0]}&hb=1`); expect(exp(a) - Date.now()).toBeGreaterThan(590000);
+    await post({ type: 'start', room: a, token: t[0] }); await post({ type: 'end', room: a, token: t[0] });
+    expect(exp(a) - Date.now()).toBeGreaterThan(890000); expect(exp(a) - Date.now()).toBeLessThanOrEqual(900000);
+  });
+  // Players looking at the final scores do not keep a finished game alive.
+  it('heartbeats do not extend a finished game', async () => {
+    const a = await create(); const t = await fill(a);
+    await post({ type: 'start', room: a, token: t[0] }); await post({ type: 'end', room: a, token: t[0] });
+    globalThis.__khx['kh:' + a] = Date.now() + 5000;
+    await get(`?room=${a}&token=${t[1]}&hb=1`); expect(exp(a) - Date.now()).toBeLessThanOrEqual(5000);
+  });
+  // A finished table shows in the public list for 2 minutes, then disappears from it.
+  it('drops finished tables from the public list after 2 minutes', async () => {
+    const a = await create(); const t = await fill(a);
+    await post({ type: 'start', room: a, token: t[0] }); await post({ type: 'end', room: a, token: t[0] });
+    expect((await get('')).body.map(x => x.phase)).toEqual(['over']);
+    const key = 'kh:' + a, [v] = globalThis.__kh[key].split('|', 1), st = stored(a); st.endedAt = Date.now() - 121000;
+    globalThis.__kh[key] = v + '|' + JSON.stringify(st);
+    expect((await get('')).body).toEqual([]);
+    expect((await peek(a)).phase).toBe('over'); // still reachable by its link until it expires
+  });
+  // When everyone has left (no heartbeats), the room expires: it is gone and drops off the public list.
+  it('ends and removes a game everyone left', async () => {
+    const a = await create(); const t = await fill(a); await post({ type: 'start', room: a, token: t[0] });
+    globalThis.__khx['kh:' + a] = Date.now() - 1;
+    expect((await get(`?room=${a}`)).status).toBe(404);
+    expect((await get('')).body).toEqual([]); expect(globalThis.__khs.rooms.has(a)).toBe(false);
+  });
+  // Players who left mid-game are not counted in the public list.
+  it('counts only players still in the game', async () => {
+    const a = await create(); const t = await fill(a, ['a', 'b', 'c', 'd']); await post({ type: 'start', room: a, token: t[0] });
+    await post({ type: 'leave', room: a, token: t[3] });
+    expect((await get('')).body[0].players).toBe(3);
+  });
+});
+
+describe('rate limiting', () => {
+  // Outside tests, more than 5 polls per second from one player get a 429.
+  it('throttles a client polling too fast', async () => {
+    vi.resetModules(); const env = process.env.NODE_ENV; process.env.NODE_ENV = 'production';
+    try {
+      const m = await import('../app/api/game/route.js');
+      const codes = [];
+      for (let i = 0; i < 7; i++) codes.push((await m.GET(new Request(U + '?room=zzzzzz&token=t1'))).status);
+      expect(codes.slice(0, 5).every(c => c === 404)).toBe(true); expect(codes[6]).toBe(429);
+      expect((await m.GET(new Request(U + '?room=zzzzzz&token=t2'))).status).toBe(404); // other players are unaffected
+    } finally { process.env.NODE_ENV = env; }
   });
 });
