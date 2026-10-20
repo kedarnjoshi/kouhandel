@@ -61,7 +61,7 @@ const Seats = ({ n }) => <span className="seats" title={`${n}/5 players`}>{[0, 1
 const Toggle = ({ on, set, children }) => <label className="toggle"><input type="checkbox" checked={on} onChange={e => set(e.target.checked)} /><span className="knob" />{children}</label>;
 const COLORS = ['#e07a5f', '#81b29a', '#f2cc8f', '#7aa5d8', '#c792ea'];
 const Avatar = ({ i, name }) => <span className="avatar" style={{ background: COLORS[i % COLORS.length] }}>{(name || '?')[0].toUpperCase()}</span>;
-const VALUES = [['Horse', 1000], ['Cow', 800], ['Pig', 650], ['Money mule', 500], ['Goat', 350], ['Sheep', 250], ['Dog', 160], ['Cat', 90], ['Duck', 40], ['Chicken', 10]];
+// const VALUES = [['Horse', 1000], ['Cow', 800], ['Pig', 650], ['Money mule', 500], ['Goat', 350], ['Sheep', 250], ['Dog', 160], ['Cat', 90], ['Duck', 40], ['Chicken', 10]];
 // "How to play" drawer: collapsed by default, opened from the tab on the right edge.
 function Rules() {
   const [open, setOpen] = useState(false);
@@ -97,7 +97,7 @@ function Rules() {
       <h3>Leaving and kicking</h3>
       <p>The host can kick anyone; anyone can kick a player who missed 2 moves in a row. A player who leaves or is kicked has their money shared out evenly (poorest first). Their animals stay on the table: anyone who owns that animal can start a koehandel for them and take them for free.</p>
       <h3>Animal values</h3>
-      <table className="values"><tbody>{VALUES.map(([a, v]) => <tr key={a}><td>{a}</td><td>{v}</td></tr>)}</tbody></table>
+      <table className="values"><tbody>{Object.entries(ANIMALS).map(([a, v]) => { const label = a === 'mule' ? 'money mule' : a; return <tr key={a}><td>{label.charAt(0).toUpperCase() + label.slice(1)}</td><td>{v}</td></tr>; })}</tbody></table>
     </aside>
   </>);
 }
