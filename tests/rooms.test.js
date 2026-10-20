@@ -209,6 +209,37 @@ describe('server-side timer', () => {
   });
 });
 
+describe('bots', () => {
+  const save = (a, f) => { const key = 'kh:' + a, [v] = globalThis.__kh[key].split('|', 1), s = stored(a); f(s); globalThis.__kh[key] = v + '|' + JSON.stringify(s); };
+  // The host adds bots over the API; they show in the view with their level, and nobody can take a bot's name.
+  it('adds bots, shows their level and protects their names', async () => {
+    const a = await create({ public: false, code: 'k' }), [t] = await fill(a, ['host'], 'k');
+    expect((await post({ type: 'addbot', room: a, token: t, level: 'hard' })).status).toBe(200);
+    const v = await peek(a, t), bot = v.players[1];
+    expect(bot.bot).toBe('hard'); expect(v.host).toBe(0);
+    const r = await post({ type: 'join', room: a, name: bot.name.toUpperCase(), code: 'k' });
+    expect(r.status).toBe(400); expect(r.body.error).toMatch(/bot/);
+    expect((await post({ type: 'addbot', room: a, token: 'nope', level: 'hard' })).status).toBe(400);
+  });
+  // A poll after the bot's moment makes the bot move, and that move is saved.
+  it('a GET lets a bot that is due make its move, and saves it', async () => {
+    const a = await create(), [t] = await fill(a, ['host']);
+    for (const level of ['hard', 'easy']) await post({ type: 'addbot', room: a, token: t, level });
+    await post({ type: 'start', room: a, token: t });
+    save(a, s => { s.turn = 1; s.due = Date.now() + 30000; s.botAt = Date.now() - 1; });
+    const v = await peek(a, t);
+    expect(v.turn === 1 && v.phase === 'turn').toBe(false); // the bot auctioned or started a koehandel
+    expect(stored(a).step).toBeGreaterThan(0);
+  });
+  // Lobby pruning never removes bots (they send no heartbeats).
+  it('keeps bots seated in the lobby', async () => {
+    const a = await create(), [t] = await fill(a, ['host']);
+    await post({ type: 'addbot', room: a, token: t, level: 'random' });
+    await get(`?room=${a}&token=${t}&hb=1`);
+    expect((await peek(a, t)).players).toHaveLength(2);
+  });
+});
+
 describe('storage under concurrency', () => {
   // Five players joining at the same moment all get a seat (no lost updates).
   it('simultaneous joins are never lost', async () => {

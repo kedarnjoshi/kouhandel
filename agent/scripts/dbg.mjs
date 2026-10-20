@@ -1,0 +1,10 @@
+import { newSimGame, rng } from '../../lib/bots/sim.js';
+import { DEFAULTS, observe, Model, bidLimit } from '../../lib/bots/brain.js';
+import { apply } from '../../lib/engine.js';
+const r = rng(3), s = newSimGame(4, 40, r);
+apply(s, s.turn, { type: 'auction' }, 1);
+const i = (s.turn + 1) % 4, o = observe(s, i), M = new Model(o, DEFAULTS), k = o.auction.k, A = o.auction.auctioneer;
+console.log('type', s.auction.type, 'remain', o.remain, 'share', [...M.share].map(x=>x.toFixed(2)).join(' '));
+console.log('mf0', [...M.mf0], 'bp row me', [...M.bp.slice(i*10, i*10+10)].map(x=>x.toFixed(3)).join(' '));
+for (const p of [0, 10, 50]) console.log(p, M.util(i, [[i, k, 1]], [[i, -p], [A, p]]), M.util(i, [[(i+1)%4===A?(i+2)%4:(i+1)%4, k, 1]], [[(i+1)%4, -p], [A, p]]), M.util(i, [], []));
+console.log('cap', bidLimit(o, DEFAULTS));

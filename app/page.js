@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ANIMALS } from '../lib/engine';
+import { ANIMALS } from '../lib/rules'; // not the engine: keeps the game logic and bots out of the browser bundle
 
 const cap = s => s[0].toUpperCase() + s.slice(1);
 const nameOf = t => (t === 'mule' ? 'Money mule' : cap(t)); // display name of an animal
@@ -23,7 +23,7 @@ function pollDelay(g, skew) {
   const soon = at => Math.max(400, at - (Date.now() + skew) + 300); // look right after a deadline passes
   if (g.phase === 'auction' && g.auction.stage === 'bidding') return Math.min(g.me === g.auction.auctioneer ? 2500 : 1500, soon(g.auction.deadline));
   const mine = g.waiting && g.waiting.p === g.me; // nobody else can move: only check now and then (kicks, the clock)
-  return Math.min(mine ? 10000 : 2500, g.due ? soon(g.due) : 10000);
+  return Math.min(mine ? 10000 : 2500, g.due ? soon(g.due) : 10000, g.next ? soon(g.next) : 10000); // next: when a bot moves
 }
 async function api(query = '', body) { // never throws on bad JSON; network errors still throw
   const res = await fetch('/api/game' + query, body
@@ -59,6 +59,43 @@ function Notice({ n }) {
 }
 const Seats = ({ n }) => <span className="seats" title={`${n}/5 players`}>{[0, 1, 2, 3, 4].map(i => <i key={i} className={i < n ? 'on' : ''} />)}</span>;
 const Toggle = ({ on, set, children }) => <label className="toggle"><input type="checkbox" checked={on} onChange={e => set(e.target.checked)} /><span className="knob" />{children}</label>;
+// A small (i) that explains a setting: shows on hover with a mouse, toggles on tap (and closes on a tap elsewhere).
+function Info({ label, children }) {
+  const [open, setOpen] = useState(false), ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const off = e => { if (!ref.current?.contains(e.target)) setOpen(false); }, esc = e => e.key === 'Escape' && setOpen(false);
+    addEventListener('pointerdown', off); addEventListener('keydown', esc);
+    return () => { removeEventListener('pointerdown', off); removeEventListener('keydown', esc); };
+  }, [open]);
+  return (
+    <span className={`info${open ? ' open' : ''}`} ref={ref}>
+      <button type="button" className="info-btn" aria-label={label} aria-expanded={open} onClick={() => setOpen(o => !o)}>i</button>
+      <span role="tooltip" className="tip">{children}</span>
+    </span>
+  );
+}
+// The bots a host can add. Kept here (not imported from the bots) so the bot code stays on the server.
+const BOTS = [
+  ['easy', 'Easy', 'Knows the rules and roughly what animals are worth, but misjudges prices and makes careless moves. A fair match for someone in their first games.'],
+  ['medium', 'Medium', 'Sensible, steady play with the odd slip.'],
+  ['hard', 'Hard', "Tuned over many thousands of games against itself: chases sets, keeps track of everyone's money and bluffs in koehandels."],
+  ['insane', 'Insane', 'Plays like Hard, but before every big decision it plays out hundreds of possible futures and picks what wins most often.'],
+  ['random', 'Random', 'Makes random (but legal) moves.'],
+  ['confusing', 'Confusing', 'Plays like a sensible player on a very strange day: generous koehandel offers, lowball offers it lets slide, paying with big notes, bidding up animals it does not need. It is not trying to lose, but its gifts shift the money around the table in ways nobody sees coming. Expect the unexpected.'],
+];
+function AddBot({ post, full }) {
+  const [level, setLevel] = useState('medium');
+  return (
+    <div className="row addbot">
+      <label className="field">Add a bot
+        <select value={level} onChange={e => setLevel(e.target.value)}>{BOTS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
+      <Info label="About the bot levels"><span className="tip-list">{BOTS.map(([k, n, d]) => <span key={k}><b>{n}:</b> {d}</span>)}</span></Info>
+      <button className="ghost" disabled={full} onClick={() => post({ type: 'addbot', level })}>Add bot</button>
+      {full && <span className="muted">The table is full.</span>}
+    </div>
+  );
+}
 const COLORS = ['#e07a5f', '#81b29a', '#f2cc8f', '#7aa5d8', '#c792ea'];
 const Avatar = ({ i, name }) => <span className="avatar" style={{ background: COLORS[i % COLORS.length] }}>{(name || '?')[0].toUpperCase()}</span>;
 // const VALUES = [['Horse', 1000], ['Cow', 800], ['Pig', 650], ['Money mule', 500], ['Goat', 350], ['Sheep', 250], ['Dog', 160], ['Cat', 90], ['Duck', 40], ['Chicken', 10]];
@@ -72,7 +109,7 @@ function Rules() {
     <aside id="rules" className={`rules${open ? ' open' : ''}`} aria-hidden={!open} inert={open ? undefined : ''}>
       <div className="row"><h2 className="grow">How to play</h2><button className="ghost small" onClick={() => setOpen(false)}>Close</button></div>
       <h3>Goal</h3>
-      <p>Collect complete sets of 4 of the same animal. Your score is the total value of your sets times the number of sets (3 sets worth 1960 together score 5880). Money is worth nothing at the end.</p>
+      <p>Collect complete sets of 4 of the same animal (with a smaller deck: all the copies of an animal, see below). Your score is the total value of your sets times the number of sets (3 sets worth 1960 together score 5880). Money is worth nothing at the end.</p>
       <h3>Start</h3>
       <p>3 to 5 players. Everyone gets 90: two 0s, four 10s and one 50. Keep your money secret: others only see how many cards you hold.</p>
       <h3>Your turn</h3>
@@ -92,6 +129,8 @@ function Rules() {
       </ul>
       <h3>End</h3>
       <p>When the deck is empty only koehandels are left. The game ends when every set is complete.</p>
+      <h3>Smaller deck</h3>
+      <p>The table can use a deck of 20 to 39 animals instead of 40. Then each animal has 2, 3 or 4 cards, chosen at random and kept secret: a set is all the cards of one animal, and nobody knows how many that is until the game ends. Fewer money mules may come up, so there is less money too.</p>
       <h3>Time limit</h3>
       <p>Each move has a time limit. Run out and your turn is skipped; in the middle of an action the obvious choice is made: the auctioneer buys if they can, payment uses your cheapest cards, an offer is 0 cards and an answer is "accept".</p>
       <h3>Leaving and kicking</h3>
@@ -105,7 +144,7 @@ const Animal = ({ t, ...p }) => <Card src={`/cards/${t}.png`} label={nameOf(t)} 
 const Money = ({ v, ...p }) => <Card src={`/cards/${v}.jpg`} label={String(v)} {...p} />;
 
 function Rooms({ go, err: e0 }) {
-  const [list, setList] = useState(null), [err, setErr] = useState(e0), [n, setN] = useState({ name: '', pub: true, code: '', log: true, timeout: 30 }), [jr, setJr] = useState('');
+  const [list, setList] = useState(null), [err, setErr] = useState(e0), [n, setN] = useState({ name: '', pub: true, code: '', log: true, timeout: 30, deck: 40 }), [jr, setJr] = useState('');
   const [busy, setBusy] = useState(false), [listErr, setListErr] = useState('');
   useEffect(() => {
     let dead = false, timer;
@@ -124,7 +163,7 @@ function Rooms({ go, err: e0 }) {
     if (busy) return;
     setBusy(true); setErr('');
     try {
-      const { j } = await api('', { type: 'create', name: n.name, public: n.pub, code: n.code, log: n.log, timeout: n.timeout });
+      const { j } = await api('', { type: 'create', name: n.name, public: n.pub, code: n.code, log: n.log, timeout: n.timeout, deckSize: n.deck });
       j.error ? setErr(j.error) : go(j.room);
     } catch { setErr('Cannot reach the server'); }
     setBusy(false);
@@ -161,6 +200,16 @@ function Rooms({ go, err: e0 }) {
                 <select value={n.timeout} onChange={e => setN({ ...n, timeout: Number(e.target.value) })}>
                   {[10, 15, 20, 30, 45, 60, 90, 120].map(v => <option key={v} value={v}>{v < 60 ? `${v}s` : `${v / 60} min`}</option>)}
                 </select></label>
+            </div>
+            <div className="deck-size">
+              <label htmlFor="deck">Deck: <b>{n.deck}</b> animals{n.deck === 40 ? ' (normal)' : ', secret sets of 2 to 4'}</label>
+              <Info label="About the deck size">
+                A normal game has 40 animals: 4 of each of the 10 kinds. With a smaller deck every kind has 2, 3 or 4 cards,
+                picked at random when the game starts, and <b>nobody knows how many of each there are</b>. A set is all the
+                cards of one kind, so 2 pigs can already be a full set, if there are only 2 pigs. Fewer money mules mean
+                less money, too. Everything is revealed when the game ends.
+              </Info>
+              <input id="deck" type="range" min={20} max={40} step={1} value={n.deck} onChange={e => setN({ ...n, deck: Number(e.target.value) })} />
             </div>
             {!n.pub && <input placeholder="Table code (password)" maxLength={40} value={n.code} onChange={e => setN({ ...n, code: e.target.value })} />}
             <button disabled={busy || (!n.pub && !n.code.trim())} onClick={create}>Create table</button>
@@ -281,7 +330,7 @@ export default function Page() {
   const w = g.waiting, clock = w && g.due ? secsTo(g.due) : null;
   const clockLine = clock !== null && <p className={`clock${w.p === me ? ' mine' : ''}${clock <= 10 ? ' low' : ''}`}>{w.p === me ? 'Your' : `${name(w.p)}'s`} time: {clock}s</p>;
   const myTurn = me >= 0 && g.turn === me;
-  const hostIdx = P.findIndex(p => !p.out), isHost = me >= 0 && me === hostIdx;
+  const hostIdx = g.host ?? P.findIndex(p => !p.out && !p.bot), isHost = me >= 0 && me === hostIdx;
   const canKick = i => i !== me && !P[i].out && g.phase !== 'over' && me >= 0 && !mine.out && (isHost || (g.phase !== 'lobby' && P[i].strikes >= 2));
   const header = (
     <header className="topbar">
@@ -290,7 +339,10 @@ export default function Page() {
         <div className="chips">
           <span className="chip">Table <b>{room}</b></span>
           {!g.public && <span className="chip">Private</span>}
-          {g.phase !== 'lobby' && <><span className="chip"><b>{g.deck}</b> animals left</span><span className="chip"><b>{g.mules ?? 0}</b>/4 money mules</span></>}
+          {g.phase !== 'lobby' && <><span className="chip"><b>{g.deck}</b> animals left</span>{g.counts
+            ? <span className="chip"><b>{g.mules ?? 0}</b>/{g.counts.mule} money mules</span>
+            : <span className="chip"><b>{g.mules ?? 0}</b> money mule{g.mules === 1 ? '' : 's'} so far</span>}</>}
+          {g.deckSize < 40 && <span className="chip">Deck of <b>{g.deckSize}</b>, secret sets</span>}
         </div>
       </div>
       <button className="ghost" onClick={leave}>{playing ? 'Leave game' : 'Leave'}</button>
@@ -308,7 +360,7 @@ export default function Page() {
         <input placeholder="Your name" maxLength={16} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} onKeyDown={e => e.key === 'Enter' && join()} />
         <button onClick={join}>Join table</button>
         {err && <p className="err">{err}</p>}{net && <p className="err">{net}</p>}
-        <p className="muted">At the table ({P.length}/5): {P.map(p => p.name).join(', ') || 'nobody yet'}.{!g.public && ' Already joined? Enter the same name to get back in.'}</p>
+        <p className="muted">At the table ({P.length}/5): {P.map(p => p.name + (p.bot ? ` (${p.bot} bot)` : '')).join(', ') || 'nobody yet'}.{!g.public && ' Already joined? Enter the same name to get back in.'}</p>
       </section>
     </main>
   );
@@ -316,8 +368,11 @@ export default function Page() {
   let panel = null;
   if (g.phase === 'lobby') panel = (<>
     <h2>Waiting for players ({P.length}/5)</h2>
-    {isHost ? <p><button disabled={P.length < 3} onClick={() => post({ type: 'start' })}>Start game</button> {P.length < 3 && <span className="muted">Needs 3 players</span>}</p> : <p>Waiting for {name(0)} to start.</p>}
-    <p className="muted">Settings: {g.timeout}s per move · game log {g.showLog ? 'on' : 'off'}.</p>
+    {isHost ? <>
+      <p><button disabled={P.length < 3} onClick={() => post({ type: 'start' })}>Start game</button> {P.length < 3 && <span className="muted">Needs 3 players (bots count)</span>}</p>
+      <AddBot post={post} full={P.length >= 5} />
+    </> : <p>Waiting for {name(hostIdx)} to start.</p>}
+    <p className="muted">Settings: {g.timeout}s per move · game log {g.showLog ? 'on' : 'off'} · {g.deckSize < 40 ? `${g.deckSize} animals, secret sets of 2 to 4` : 'normal deck of 40'}.</p>
     <p className="muted">Share the table ID <b>{room}</b>{!g.public && ' and the code'} with your friends. Players who close the page before the start lose their seat.</p>
   </>);
   else if (g.phase === 'turn') panel = myTurn ? (<>
@@ -368,6 +423,7 @@ export default function Page() {
   } else if (g.phase === 'over') panel = (<>
     <h2>Final scores</h2>
     <ol className="scores">{[...P.keys()].sort((x, y) => P[y].score - P[x].score).map((i, r) => <li key={i} className={r === 0 ? 'winner' : ''}><Avatar i={i} name={P[i].name} /><b className="grow">{P[i].name}</b><span className="muted">{P[i].sets} set{P[i].sets === 1 ? '' : 's'}</span><span className="big">{P[i].score}</span></li>)}</ol>
+    {g.deckSize < 40 && g.counts && <p className="muted">This deck had {Object.entries(g.counts).map(([k, c]) => `${c} ${nameOf(k).toLowerCase()}`).join(', ')}.</p>}
   </>);
 
   return (
@@ -385,9 +441,9 @@ export default function Page() {
         {P.map((p, i) => (
           <div key={i} className={`panel pl${(g.waiting ? g.waiting.p : a?.auctioneer) === i ? ' turn' : ''}${i === me ? ' me' : ''}${p.out ? ' out' : ''}`}>
             <div className="who"><Avatar i={i} name={p.name} /><div className="grow"><b>{p.name}{i === me ? ' (you)' : ''}</b>
-              <span className="muted">{p.out ? 'out of the game · animals up for grabs' : <>{i === hostIdx ? 'host · ' : ''}{g.phase === 'lobby' ? 'ready' : `${p.cards} money card${p.cards === 1 ? '' : 's'}`}{p.strikes >= 2 ? ` · missed ${p.strikes} moves` : ''}</>}</span></div>
+              <span className="muted">{p.out ? 'out of the game · animals up for grabs' : <>{p.bot ? <span className="botTag">{cap(p.bot)} bot</span> : ''}{i === hostIdx ? 'host · ' : ''}{g.phase === 'lobby' ? 'ready' : `${p.cards} money card${p.cards === 1 ? '' : 's'}`}{p.strikes >= 2 ? ` · missed ${p.strikes} moves` : ''}</>}</span></div>
               {canKick(i) && <button className="ghost small kick" onClick={() => kick(i)}>{g.phase === 'lobby' ? 'Remove' : 'Kick'}</button>}</div>
-            <div className="row">{Object.entries(p.animals).filter(([, n]) => n > 0).map(([k, n]) => <Animal key={k} t={k} small badge={n} gold={n === 4} />)}</div>
+            <div className="row">{Object.entries(p.animals).filter(([, n]) => n > 0).map(([k, n]) => <Animal key={k} t={k} small badge={n} gold={!!g.counts && n === g.counts[k]} />)}</div>
           </div>
         ))}
       </div>
