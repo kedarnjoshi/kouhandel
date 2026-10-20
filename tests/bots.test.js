@@ -121,6 +121,28 @@ describe('bots during the game', () => {
   });
 });
 
+describe('endless koehandels', () => {
+  // Once the deck is empty a koehandel is compulsory; two bots could win the same animal back from each other
+  // forever. The table remembers recent koehandels so bots settle a repeated one instead.
+  it('remembers the last koehandels (and only the last 24)', () => {
+    const s = table(['hard', 'hard']); apply(s, 0, { type: 'start' }, 0);
+    s.players[0].animals.cow = 1; s.players[1].animals.cow = 1;
+    for (let i = 0; i < 30; i++) { s.phase = 'turn'; s.turn = 0; s.trade = null; apply(s, 0, { type: 'koehandel', target: 1, animal: 'cow' }, 0); }
+    expect(s.khs).toHaveLength(24); expect(s.khs[0]).toEqual([0, 1, 'cow']);
+  });
+  // Self-play between tuned bots used to get stuck in such loops now and then; now every game ends.
+  it('bot-only games always finish', async () => {
+    const { newSimGame, playOut, rng } = await import('../lib/bots/sim');
+    const { makeAgent } = await import('../lib/bots/levels');
+    const hard = makeAgent(LEVELS.hard.spec);
+    for (let g = 0; g < 40; g++) {
+      const r = rng(g + 1), s = newSimGame(3 + g % 3, g % 2 ? 40 : 24, r);
+      playOut(s, s.players.map(() => hard), r, 3000);
+      expect(s.phase).toBe('over');
+    }
+  }, 60000);
+});
+
 // ---- whole games: one person who plays simple moves (or sleeps), the rest bots of every kind ----
 describe('full games with bots', () => {
   const person = s => { // auctions when it can, otherwise lets the clock decide
