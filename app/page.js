@@ -19,7 +19,7 @@ function pollDelay(g, skew) {
   if (typeof document !== 'undefined' && document.hidden) return 15000;
   if (!g) return 2000;
   if (g.phase === 'over') return 30000;
-  if (g.phase === 'lobby') return 3000;
+  if (g.phase === 'lobby' || g.paused) return 3000;
   const soon = at => Math.max(400, at - (Date.now() + skew) + 300); // look right after a deadline passes
   if (g.phase === 'auction' && g.auction.stage === 'bidding') return Math.min(g.me === g.auction.auctioneer ? 2500 : 1500, soon(g.auction.deadline));
   const mine = g.waiting && g.waiting.p === g.me; // nobody else can move: only check now and then (kicks, the clock)
@@ -34,6 +34,7 @@ async function api(query = '', body) { // never throws on bad JSON; network erro
   return { status: res.status, j: j || { error: `Server error (${res.status})` } };
 }
 
+const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 function Card({ src, label, sel, onClick, small, badge, gold }) {
   const [bad, setBad] = useState(false); // falls back to a text card if the image is missing
   useEffect(() => setBad(false), [src]);
@@ -77,10 +78,10 @@ function Info({ label, children }) {
 }
 // The bots a host can add. Kept here (not imported from the bots) so the bot code stays on the server.
 const BOTS = [
-  ['easy', 'Easy', 'Knows the rules and roughly what animals are worth, but misjudges prices and makes careless moves. A fair match for someone in their first games.'],
-  ['medium', 'Medium', 'Sensible, steady play with the odd slip.'],
-  ['hard', 'Hard', "Tuned over many thousands of games against itself: chases sets, keeps track of everyone's money and bluffs in koehandels."],
-  ['insane', 'Insane', 'Plays like Hard, but before every big decision it plays out hundreds of possible futures and picks what wins most often.'],
+  ['easy', 'Easy', 'Knows the rules and roughly what animals are worth, but misjudges prices, makes careless moves and takes koehandel offers at face value. A fair match for someone in their first games.'],
+  ['medium', 'Medium', 'Sensible, steady play with the odd slip. Bids on what it needs and koehandels when it pays.'],
+  ['hard', 'Hard', "Predicts what everyone else will do: bids up to what an animal is worth to it, keeps track of everyone's money, koehandels when it pays and bluffs. Each Hard bot has its own small leanings."],
+  ['insane', 'Insane', 'Hard, plus it treats every koehandel as a game of hidden hands and works out the best way to mix offers and bluffs, so a pile of zeros will not fool it and its card counts give little away.'],
   ['random', 'Random', 'Makes random (but legal) moves.'],
   ['confusing', 'Confusing', 'Plays like a sensible player on a very strange day: generous koehandel offers, lowball offers it lets slide, paying with big notes, bidding up animals it does not need. It is not trying to lose, but its gifts shift the money around the table in ways nobody sees coming. Expect the unexpected.'],
 ];
@@ -325,7 +326,7 @@ export default function Page() {
   const name = i => P[i]?.name ?? '?';
   const picked = sel.map(i => hand[i]), pickedSum = sum(picked), money = sum(hand);
   const toggle = i => setSel(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i]);
-  const secsTo = at => Math.max(0, Math.ceil((at - (Date.now() + skew.current)) / 1000));
+  const secsTo = at => Math.max(0, Math.ceil((at - (g.paused ? g.paused.at : Date.now() + skew.current)) / 1000)); // clocks stand still while paused
   const left = a && a.stage === 'bidding' ? secsTo(a.deadline) : 0;
   const w = g.waiting, clock = w && g.due ? secsTo(g.due) : null;
   const clockLine = clock !== null && <p className={`clock${w.p === me ? ' mine' : ''}${clock <= 10 ? ' low' : ''}`}>{w.p === me ? 'Your' : `${name(w.p)}'s`} time: {clock}s</p>;
@@ -345,7 +346,10 @@ export default function Page() {
           {g.deckSize < 40 && <span className="chip">Deck of <b>{g.deckSize}</b>, secret sets</span>}
         </div>
       </div>
-      <button className="ghost" onClick={leave}>{playing ? 'Leave game' : 'Leave'}</button>
+      <div className="row nowrap">
+        {isHost && playing && <button className="ghost" onClick={() => post({ type: g.paused ? 'resume' : 'pause' })}>{g.paused ? 'Resume' : 'Pause'}</button>}
+        <button className="ghost" onClick={leave}>{playing ? 'Leave game' : 'Leave'}</button>
+      </div>
     </header>
   );
 
@@ -422,7 +426,7 @@ export default function Page() {
     </div></div>);
   } else if (g.phase === 'over') panel = (<>
     <h2>Final scores</h2>
-    <ol className="scores">{[...P.keys()].sort((x, y) => P[y].score - P[x].score).map((i, r) => <li key={i} className={r === 0 ? 'winner' : ''}><Avatar i={i} name={P[i].name} /><b className="grow">{P[i].name}</b><span className="muted">{P[i].sets} set{P[i].sets === 1 ? '' : 's'}</span><span className="big">{P[i].score}</span></li>)}</ol>
+    <ol className="scores">{[...P.keys()].sort((x, y) => P[y].score - P[x].score).map(i => { const rank = 1 + P.filter(q => q.score > P[i].score).length; return <li key={i} className={i === me ? 'me' : ''}><span className="rank">{ordinal(rank)}</span><Avatar i={i} name={P[i].name} /><b className="grow">{P[i].name}{i === me ? ' (you)' : ''}</b><span className="muted">{P[i].sets} set{P[i].sets === 1 ? '' : 's'}</span><span className="big">{P[i].score}</span></li>; })}</ol>
     {g.deckSize < 40 && g.counts && <p className="muted">This deck had {Object.entries(g.counts).map(([k, c]) => `${c} ${nameOf(k).toLowerCase()}`).join(', ')}.</p>}
   </>);
 
@@ -447,6 +451,11 @@ export default function Page() {
           </div>
         ))}
       </div>
+      {g.paused && g.phase !== 'over' && <div className="pausebox" role="dialog" aria-live="polite"><div className="panel">
+        <h2>Game paused</h2>
+        <p>{g.paused.by === me ? 'You paused the game. Everyone waits until you resume.' : <><b>{g.paused.name}</b> paused the game. Waiting for {isHost ? 'you' : 'them'} to resume.</>}</p>
+        {isHost && <button onClick={() => post({ type: 'resume' })}>Resume</button>}
+      </div></div>}
       {me >= 0 && <Notice key={room} n={g.note} />}
       <section className="panel stage">{panel}</section>
       {err && <p className="err">{err}</p>}{net && <p className="err">{net}</p>}

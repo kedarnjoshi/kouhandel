@@ -5,6 +5,7 @@ import { TYPES, sum } from '../lib/rules';
 
 const LV = Object.keys(LEVELS);
 const total = s => s.players.reduce((n, p) => n + sum(p.money), 0);
+const sorted = a => [...a].sort((x, y) => x - y);
 // A lobby with one person (the host) and the given bots.
 function table(bots = ['hard', 'hard'], o = {}) {
   const s = newGame({ timeout: 20, ...o }); s.players.push(newPlayer('Ann', 'tokA'));
@@ -141,6 +142,86 @@ describe('endless koehandels', () => {
       expect(s.phase).toBe('over');
     }
   }, 60000);
+});
+
+// ---- the koehandel solver, personalities and what the bots may see of the history ----
+describe('second-generation pieces', () => {
+  // A defender who sees three cards from someone holding mostly zeros must not simply accept: the solver keeps
+  // in mind that a pile of zeros is a cheap bluff.
+  it('solver: does not accept a likely bluff it can cheaply beat', async () => {
+    const { solve } = await import('../lib/bots/solver');
+    const lin = { win: d => 200 + d, lose: d => d }; // the animal is worth 200 to both, money counts 1:1
+    const aTypes = [{ hand: [0, 0, 0, 10, 10, 50], w: 0.5 }, { hand: [0, 0, 0, 10, 10, 10], w: 0.5 }];
+    const bTypes = [{ hand: [10, 10, 50, 100], w: 1 }];
+    const g = solve({ aTypes, bTypes, UA: lin, UB: lin, iters: 40 });
+    expect(g.answer([10, 10, 50, 100], 3)).toBeGreaterThan(0);
+  });
+  it('solver: the cards for an offer add up and have the right count', async () => {
+    const { cardsFor } = await import('../lib/bots/solver');
+    const c = cardsFor([0, 0, 10, 10, 50, 100], 60, 4);
+    expect(c).toHaveLength(4); expect(sum(c)).toBe(60);
+    expect(cardsFor([10, 50], 30, 1)).toBe(null);
+  });
+  // Every bot seat gets its own leanings, the same each time it is asked during a game.
+  it('personalities are fixed per table and seat, and differ between seats', async () => {
+    const { styleOf } = await import('../lib/bots/expert');
+    const s = { seed: 99 };
+    expect(styleOf(s, 1, 1)).toEqual(styleOf(s, 1, 1));
+    expect(styleOf(s, 1, 1)).not.toEqual(styleOf(s, 2, 1));
+    expect(styleOf(s, 1, 0)).toBe(null);
+  });
+  // The history the bots learn from never shows a koehandel's amounts or a payment's cards to outsiders.
+  it('history: amounts stay with the players in the deal', async () => {
+    const { observe } = await import('../lib/bots/brain');
+    const s = table(['hard', 'hard']); apply(s, 0, { type: 'start' }, 0);
+    s.players[0].animals.cow = 1; s.players[1].animals.cow = 1; s.phase = 'turn'; s.turn = 0;
+    apply(s, 0, { type: 'koehandel', target: 1, animal: 'cow' }, 0);
+    apply(s, 0, { type: 'tradebid', cards: [50] }, 0); apply(s, 1, { type: 'accept' }, 0);
+    const e = s.hist.find(x => x.t === 'k');
+    expect(e).toMatchObject({ a: 0, b: 1, na: 1, nb: null, x: 50 });
+    expect(observe(s, 2).hist.find(x => x.t === 'k')).toMatchObject({ na: 1, x: null, ca: null });
+    expect(observe(s, 1).hist.find(x => x.t === 'k').x).toBe(50);
+  });
+});
+
+describe('fourth-round fixes', () => {
+  // A small table set up by hand: 20-card deck (pairs), the given hands and animals, ledger matching the hands.
+  async function setup(hands, herds, deck = ['cow', 'pig', 'horse']) {
+    const { newSimGame, rng } = await import('../lib/bots/sim');
+    const s = newSimGame(3, 20, rng(5)); s.deck = deck.slice();
+    s.players.forEach((p, i) => { for (const t in p.animals) p.animals[t] = 0; Object.assign(p.animals, herds[i]); p.money = hands[i].slice(); });
+    s.ledger = s.players.map(p => sum(p.money));
+    return s;
+  }
+  const insane = async over => { const { makeAgent } = await import('../lib/bots/levels'); const { INSANE } = await import('../lib/bots/index'); return makeAgent({ kind: 'expert', th: { ...INSANE, ...over } }); };
+  const r = async seed => (await import('../lib/bots/sim')).rng(seed);
+  // Everyone can work out that the other player holds only two zeros: offering anything at all is wasted.
+  it('offers nothing to a player known to be broke', async () => {
+    const s = await setup([[0, 0, 10, 10, 50, 100, 10], [0, 0, 10, 10, 10, 10, 50, 50], [0, 0]], [{}, { goat: 1 }, { goat: 1 }]);
+    s.turn = 1; apply(s, 1, { type: 'koehandel', target: 2, animal: 'goat' }, s.clock++);
+    const A = await insane({ sharp: 1, padCost: 0.5 });
+    for (let g = 0; g < 4; g++) expect(A.act(s, 1, 'offer', await r(g)).cards).toEqual([]);
+  });
+  // Deck empty, and whichever way this koehandel goes the attacker shares no animal with anyone afterwards: money
+  // cannot change its score any more, so it puts everything in.
+  it('puts everything in when money can no longer matter', async () => {
+    const s = await setup([[0, 0, 100, 50, 50, 50, 50, 10, 10, 10], [50, 10, 100, 10], [0, 0, 0, 0, 50, 100]],
+      [{ cow: 2, mule: 1, cat: 1 }, { horse: 2, mule: 1, goat: 2 }, { pig: 2, sheep: 2, cat: 1 }], []);
+    s.turn = 2; apply(s, 2, { type: 'koehandel', target: 0, animal: 'cat' }, s.clock++);
+    const A = await insane({ allIn: 1 });
+    expect(sorted(A.act(s, 2, 'offer', await r(1)).cards)).toEqual([0, 0, 0, 0, 50, 100]);
+    s.players[0].animals.chicken = 1; s.players[1].animals.chicken = 1; // a fight between the other two changes nothing
+    expect(sorted(A.act(s, 2, 'offer', await r(1)).cards)).toEqual([0, 0, 0, 0, 50, 100]);
+    s.players[2].animals.mule = 1; s.players[1].animals.mule = 0; // a mule fight with player 0 is still to come: money matters
+    expect(sum(A.act(s, 2, 'offer', await r(1)).cards)).toBeLessThan(150);
+  });
+  // The opening bid reaches the table: a bot jumps to it instead of raising by 10.
+  it('a bot opens with its opening bid', async () => {
+    const { nextBid } = await import('../lib/bots/index');
+    expect(nextBid('insane', 0, 200, Math.random, 120)).toBe(120);
+    expect(nextBid('insane', 130, 200, () => 0, 120)).toBe(140); // already above it: the usual step
+    expect(nextBid('insane', 0, 100, Math.random, 120)).toBe(10); // never above the limit
+  });
 });
 
 // ---- whole games: one person who plays simple moves (or sleeps), the rest bots of every kind ----
