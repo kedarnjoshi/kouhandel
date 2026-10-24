@@ -1,0 +1,1 @@
+insane:small.delta=0.986,small.deltaEnd=1.16,small.muEnd=0.746,small.shade=0.953,small.mu=620,small.gamma=1.27,small.rho=0.756,small.tau=2.2,small.tau1=142,small.mDec=0.0641,khBias=-0.186

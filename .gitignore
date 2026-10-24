@@ -3,3 +3,10 @@ node_modules
 .env*.local
 .claude/
 /games/
+/agent/cpp/*.exe
+/agent/cpp/old/
+/agent/cpp/levels.json
+/agent/cpp/solve_cases.txt
+/agent/cpp/gmon.out
+/agent/value/data/
+__pycache__/

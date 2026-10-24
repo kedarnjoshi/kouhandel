@@ -1,0 +1,1 @@
+insane:delta=0.493,deltaEnd=1.44,muEnd=0.431,shade=1.28,mu=623,gamma=1.17,rho=1.03,tau=1.34,tau1=90.1,mDec=0.0554,openHist=2.39

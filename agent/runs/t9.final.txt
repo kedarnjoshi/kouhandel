@@ -1,0 +1,1 @@
+n2:shade=1.04,khBias=-0.6,mDec=0.104,netMix=0.2,netT=2.17,shadeK=-1

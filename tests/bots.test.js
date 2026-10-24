@@ -70,17 +70,18 @@ describe('bots during the game', () => {
     }
   });
   // Thinking time: about a quarter of the time per move, never under 0.7s or over 80% of the limit, steadier for
-  // better bots and all over the place for the confusing one.
+  // better bots and all over the place for the confusing one. Insane takes a second for every move, to be easy to follow.
   it('thinks for about a quarter of the limit, with level-dependent spread', () => {
+    expect(thinkMs('insane', 'turn', 20000, botRand({ seed: 1 }, 0, 'x'))).toBe(1000);
     const stats = l => {
       const r = botRand({ seed: 1 }, 0, l), xs = Array.from({ length: 4000 }, () => thinkMs(l, 'turn', 20000, r));
       const m = sum(xs) / xs.length, sd = Math.sqrt(sum(xs.map(x => (x - m) ** 2)) / xs.length);
       expect(Math.min(...xs)).toBeGreaterThanOrEqual(700); expect(Math.max(...xs)).toBeLessThanOrEqual(16000);
       return { m, sd };
     };
-    const e = stats('easy'), h = stats('hard'), i = stats('insane'), c = stats('confusing');
-    for (const x of [e, h, i]) expect(Math.abs(x.m - 5000)).toBeLessThan(400);
-    expect(e.sd).toBeGreaterThan(h.sd); expect(h.sd).toBeGreaterThan(i.sd); expect(c.sd).toBeGreaterThan(e.sd);
+    const e = stats('easy'), m = stats('medium'), h = stats('hard'), c = stats('confusing');
+    for (const x of [e, m, h]) expect(Math.abs(x.m - 5000)).toBeLessThan(400);
+    expect(e.sd).toBeGreaterThan(m.sd); expect(m.sd).toBeGreaterThan(h.sd); expect(c.sd).toBeGreaterThan(e.sd);
     expect(thinkMs('hard', 'turn', 120000, botRand({ seed: 2 }, 0, 'x'))).toBeLessThan(20000); // long limits do not drag
   });
   // Bots bid on an animal the person auctions, raise in steps, never beyond their money, and before the clock ends.
@@ -99,6 +100,28 @@ describe('bots during the game', () => {
         if (h && h.amt !== last) { seen++; expect(h.amt).toBeGreaterThan(last); expect(h.amt).toBeLessThanOrEqual(cap[h.p]); last = h.amt; }
       }
       expect(s.log.join('\n')).not.toMatch(/ran out of time/);
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+  // The first bid comes late in the opening window (a bid shows interest, and nobody else may bid at all).
+  it('waits with the first bid until late', () => {
+    let firsts = 0;
+    for (let k = 0; k < 6; k++) {
+      const s = table(['insane', 'hard', 'hard']); s.seed = k; apply(s, 0, { type: 'start' }, 0);
+      s.turn = 0; s.deck = ['cow', 'horse', 'pig', 'cat'].concat(s.deck.slice(4)); s.due = 30000; s.botAt = null;
+      apply(s, 0, { type: 'auction' }, 1000);
+      const end = s.auction.deadline;
+      for (let now = 1000; now < end && !s.auction.high; now += 250) tick(s, now);
+      if (s.auction.high) { firsts++; expect(s.auction.at).toBeGreaterThanOrEqual(end - 4000); }
+    }
+    expect(firsts).toBeGreaterThan(0);
+  });
+  // With only one possible move (here a turn with nothing to koehandel for) a bot takes just a moment.
+  it('moves quickly when there is only one thing to do', () => {
+    let seen = 0;
+    for (let k = 0; k < 12; k++) {
+      const s = table(['insane', 'insane']); apply(s, 0, { type: 'start' }, 0);
+      if (s.turn !== 0) { seen++; expect(s.botAt).toBeLessThanOrEqual(1500); } // nobody has animals yet: auction it is
     }
     expect(seen).toBeGreaterThan(0);
   });
@@ -212,8 +235,19 @@ describe('fourth-round fixes', () => {
     expect(sorted(A.act(s, 2, 'offer', await r(1)).cards)).toEqual([0, 0, 0, 0, 50, 100]);
     s.players[0].animals.chicken = 1; s.players[1].animals.chicken = 1; // a fight between the other two changes nothing
     expect(sorted(A.act(s, 2, 'offer', await r(1)).cards)).toEqual([0, 0, 0, 0, 50, 100]);
-    s.players[2].animals.mule = 1; s.players[1].animals.mule = 0; // a mule fight with player 0 is still to come: money matters
+    // a mule fight with player 0 is still to come, and with player 0 holding less than this attacker it can be won:
+    // money matters
+    s.players[2].animals.mule = 1; s.players[1].animals.mule = 0; s.players[0].money = [0, 0, 10, 10, 10, 50]; s.ledger[0] = 80;
     expect(sum(A.act(s, 2, 'offer', await r(1)).cards)).toBeLessThan(150);
+  });
+  // th.solo: the settings for a table where all the others are people (the bots can see who is a bot).
+  it('plays its solo settings only when all the others are people', async () => {
+    const s = await setup([[0, 0, 10, 10, 50, 100, 10], [0, 0, 10, 10, 10, 10, 50, 50], [0, 0, 10, 50, 50]], [{}, { goat: 1 }, { goat: 1 }]);
+    s.turn = 1; s.players[1].bot = 'insane';
+    const A = await insane({ khBias: -0.99, khBiasP: -0.99, solo: { khBias: 10, khBiasP: 10 } }); // never a koehandel, or always one
+    expect(A.act(s, 1, 'turn', await r(1)).type).toBe('koehandel');
+    s.players[0].bot = 'hard';
+    expect(A.act(s, 1, 'turn', await r(1)).type).toBe('auction');
   });
   // The opening bid reaches the table: a bot jumps to it instead of raising by 10.
   it('a bot opens with its opening bid', async () => {
@@ -221,6 +255,64 @@ describe('fourth-round fixes', () => {
     expect(nextBid('insane', 0, 200, Math.random, 120)).toBe(120);
     expect(nextBid('insane', 130, 200, () => 0, 120)).toBe(140); // already above it: the usual step
     expect(nextBid('insane', 0, 100, Math.random, 120)).toBe(10); // never above the limit
+  });
+});
+
+describe('fifth-round changes', () => {
+  // with the fifth round's 20-card settings (the seventh round's bid lower and leave this horse unopened)
+  // (net: 0, the formula alone: these are its settings)
+  const FIFTH = { delta: 0.527, deltaEnd: 1.4, muEnd: 0.47, shade: 1.32, mu: 660, gamma: 1.29, rho: 0.874, tau: 1.46, tau1: 125, mDec: 0.0521, khBias: 0, net: 0 };
+  const agent = async () => { const { makeAgent } = await import('../lib/bots/levels'); const { INSANE } = await import('../lib/bots/index'); return makeAgent({ kind: 'expert', th: { ...INSANE, small: { ...INSANE.small, ...FIFTH } } }); };
+  const sim = () => import('../lib/bots/sim');
+  it('blends the 20-card settings into the full-deck ones up to 30 cards', async () => {
+    const { forDeck } = await import('../lib/bots/expert');
+    const th = { shade: 1, mu: 500, small: { shade: 1.4, mu: 700 } };
+    expect(forDeck(th, 20)).toMatchObject({ shade: 1.4, mu: 700 });
+    expect(forDeck(th, 25).shade).toBeCloseTo(1.2);
+    expect(forDeck(th, 30)).toMatchObject({ shade: 1, mu: 500 });
+    expect(forDeck(th, 40)).toMatchObject({ shade: 1, mu: 500 });
+  });
+  // A high opening bid only pays when the auctioneer might buy the animal back: against a player who never did, it is
+  // just a higher price.
+  it('opens lower against an auctioneer who never buys back', async () => {
+    const { newSimGame, rng } = await sim(), A = await agent();
+    const s = newSimGame(3, 20, rng(305)); apply(s, s.turn, { type: 'auction' }, s.clock++);
+    const a = s.auction, me = (a.auctioneer + 1) % 3;
+    expect(a.type).toBe('horse');
+    const past = buy => [1, 2, 3, 4, 5].map(() => ({ t: 'a', k: 'dog', A: a.auctioneer, w: buy ? a.auctioneer : me, p: 40, buy, mx: {}, pred: {} }));
+    const fresh = A.bid(s, me, rng(1)).open;
+    s.hist = past(false); const sold = A.bid(s, me, rng(1)).open;
+    s.hist = past(true); const bought = A.bid(s, me, rng(1)).open;
+    expect(fresh).toBeGreaterThan(0);
+    expect(sold).toBeLessThan(fresh);
+    expect(bought).toBeGreaterThanOrEqual(fresh);
+  });
+  // Late in a 20-card game a split pair goes to whoever can pay more in the koehandel: paying all your money for the
+  // second pig while a player who holds the first keeps theirs just hands them the pair.
+  it('keeps money to defend a pair late in the game', async () => {
+    const { newSimGame, rng } = await sim(), A = await agent();
+    const s = newSimGame(3, 20, rng(5)); s.deck = ['duck', 'cat', 'dog', 'goat', 'sheep', 'chicken', 'horse', 'cow'];
+    const herds = [{ cow: 2 }, { pig: 1, horse: 2 }, { sheep: 2 }], hands = [[0, 0, 50, 50, 100], [0, 0, 10, 10, 50], [0, 0, 10, 50, 50]];
+    s.players.forEach((p, i) => { for (const t in p.animals) p.animals[t] = 0; Object.assign(p.animals, herds[i]); p.money = hands[i]; });
+    s.ledger = s.players.map(p => sum(p.money)); s.turn = 2;
+    apply(s, 2, { type: 'auction' }, s.clock++); s.auction.type = 'pig';
+    expect(A.bid(s, 0, rng(1)).cap).toBeLessThan(200);
+  });
+});
+
+describe('sixth-round changes', () => {
+  // Two moments from a 20-card game a person won against two Insanes (tests/fixtures, rebuilt with
+  // agent/scripts/rebuild.mjs): Pippin, rich, sold a horse for 60, and Clover, holding the other cat, sold a cat for 20.
+  // Buying back looked better to both, but not by the fixed margin buy-backs used to need; a cheap buy-back needs less
+  // (and counting their own expected score tips the horse further). These test the formula's margins, so without the
+  // learned model of the eighth round (net: 0); with it, Insane buys the horse back either way and sells the cat.
+  const fixture = async name => { const fs = await import('node:fs'); return JSON.parse(fs.readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8')); };
+  const agentWith = async (small = {}) => { const { makeAgent } = await import('../lib/bots/levels'); const { INSANE } = await import('../lib/bots/index'); return makeAgent({ kind: 'expert', th: { ...INSANE, small: { ...INSANE.small, net: 0, ...small } } }); };
+  for (const name of ['horse60', 'cat20']) it(`buys back cheaply when it pays (${name})`, async () => {
+    const { rng } = await import('../lib/bots/sim'), s = await fixture(name), A = s.auction.auctioneer;
+    expect(s.auction.stage).toBe('decide');
+    expect((await agentWith()).act(s, A, 'decide', rng(1)).type).toBe('buy');
+    expect((await agentWith({ mDecP: 0, own: 0 })).act(s, A, 'decide', rng(1)).type).toBe('sell'); // as it played
   });
 });
 

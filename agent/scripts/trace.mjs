@@ -6,6 +6,7 @@ import { LEVELS } from '../../lib/bots/index.js';
 import { apply, waiting, tick, score, countsOf } from '../../lib/engine.js';
 import { sum } from '../../lib/rules.js';
 import { agentFor } from './registry.mjs';
+import { look } from '../../lib/bots/expert.js';
 
 const [seed = 1, levelsArg = 'hard,hard,hard,hard', size = 40] = process.argv.slice(2);
 const levels = levelsArg.split(levelsArg.includes(';') ? ';' : ','), agents = levels.map(agentFor);
@@ -26,6 +27,9 @@ for (let step = 0; s.phase !== 'over' && step < 2000; step++) {
   }
   const w = waiting(s);
   if (!w) break;
+  if (process.env.LOOK && (w.what === 'offer' || w.what === 'respond')) { // LOOK=1: what the deciding player believes about everyone's money
+    const o = look(s, w.p); console.log(`   (P${w.p} thinks: ${o.money.map((m, j) => `P${j} ${m}${j === w.p ? '' : `±${Math.round(o.sdS[j])}`} (really ${sum(s.players[j].money)})`).join(', ')})`);
+  }
   const before = JSON.stringify(s.trade), act = agents[w.p].act(s, w.p, w.what, r);
   const tr = s.trade;
   try { apply(s, w.p, act, s.clock++); } catch (e) { console.log('   refused', JSON.stringify(act), e.message); s.due = s.clock; tick(s, s.clock); }

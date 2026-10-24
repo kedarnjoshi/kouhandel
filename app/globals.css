@@ -45,7 +45,25 @@ select{width:auto;margin-left:8px;cursor:pointer} select option{background:var(-
 .info.open .tip{display:block}
 @media (hover:hover){.info:hover .tip{display:block}}
 
-.tip-list{display:flex;flex-direction:column;gap:8px}
+/* a panel with an open (i) comes to the front, so its explanation is not under the next panel's blur */
+.panel:has(.info.open),.panel:has(.picker.open){position:relative;z-index:45}
+@media (hover:hover){.panel:has(.info:hover){position:relative;z-index:45}}
+/* bot level picker */
+.picker{position:relative;display:inline-flex}
+.picker-btn{display:inline-flex;align-items:center;gap:10px;min-width:168px;justify-content:space-between;padding:9px 12px;background:#0004;color:var(--chalk);border:1.5px solid var(--line);box-shadow:none;font-weight:600}
+.picker-btn:hover:not(:disabled){filter:none;transform:none;border-color:var(--straw)} .picker-btn:active:not(:disabled){transform:none;box-shadow:none}
+.picker.open .picker-btn{border-color:var(--straw)}
+.caret{color:var(--straw);font-size:.8rem;transition:transform .15s} .picker.open .caret{transform:rotate(180deg)}
+.picker-menu{position:absolute;z-index:44;top:calc(100% + 6px);left:0;min-width:max(100%,230px);padding:6px;border-radius:12px;background:#0f1718;border:1px solid var(--line);box-shadow:var(--shadow);display:flex;flex-direction:column;gap:2px}
+.picker-row{display:flex;align-items:center;gap:6px;border-radius:8px;padding-right:6px} .picker-row:hover,.picker-row.on{background:#e8c46814}
+.picker-opt{flex:1;display:flex;padding:8px 10px;background:transparent;color:var(--chalk);box-shadow:none;font-weight:600;text-align:left}
+.picker-opt:hover:not(:disabled),.picker-opt:active:not(:disabled){filter:none;transform:none;box-shadow:none}
+.picker-row.on .picker-opt{color:var(--straw)}
+.lvl{display:inline-flex;align-items:center;justify-content:space-between;gap:12px;width:100%}
+.pips{display:inline-flex;gap:3px} .pips i{width:7px;height:7px;border-radius:50%;background:#ffffff2e} .pips i.on{background:var(--straw)}
+.info-slot{width:22px;flex:none}
+.lvl-name,.lvl-tag{white-space:nowrap}
+.lvl-tag{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--sky)}
 .botTag{display:inline-block;margin-right:6px;padding:0 7px;border-radius:999px;background:#7aa5d82e;color:var(--sky);font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .addbot{margin-top:6px}
 /* layout */

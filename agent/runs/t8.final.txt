@@ -1,0 +1,1 @@
+insane:shade=1.29,mDec=0.224,khBias=-0.286,delta=0.781,deltaEnd=0.659,mu=533,muEnd=0.2,gamma=1.03,rho=1.16,tau=1.51,tau1=108,shadeK=-0.321

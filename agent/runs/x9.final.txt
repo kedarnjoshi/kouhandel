@@ -1,0 +1,1 @@
+ins8:shade=0.5,mDec=0.144,khBias=-0.6,delta=0.778,deltaEnd=1.35,mu=799,muEnd=0.303,gamma=0.98,rho=1.5,tau=1.2
