@@ -2,7 +2,8 @@
 import { Worker } from 'node:worker_threads';
 import os from 'node:os';
 
-export function pool(size = Math.max(1, os.cpus().length - 1)) {
+// POOL=n caps the workers (for example to leave room for a game being played on the same computer).
+export function pool(size = +process.env.POOL || Math.max(1, os.cpus().length - 1)) {
   const workers = [], queue = [], waiting = new Map(); let next = 0;
   const idle = [];
   const pump = () => { while (idle.length && queue.length) { const w = idle.pop(), job = queue.shift(); w.job = job; w.postMessage({ id: job.id, games: job.games }); } };

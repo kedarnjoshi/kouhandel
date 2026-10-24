@@ -76,22 +76,42 @@ function Info({ label, children }) {
     </span>
   );
 }
-// The bots a host can add. Kept here (not imported from the bots) so the bot code stays on the server.
-const BOTS = [
-  ['easy', 'Easy', 'Knows the rules and roughly what animals are worth, but misjudges prices, makes careless moves and takes koehandel offers at face value. A fair match for someone in their first games.'],
-  ['medium', 'Medium', 'Sensible, steady play with the odd slip. Bids on what it needs and koehandels when it pays.'],
-  ['hard', 'Hard', "Predicts what everyone else will do: bids up to what an animal is worth to it, keeps track of everyone's money, koehandels when it pays and bluffs. Each Hard bot has its own small leanings."],
-  ['insane', 'Insane', 'Hard, plus it treats every koehandel as a game of hidden hands and works out the best way to mix offers and bluffs, so a pile of zeros will not fool it and its card counts give little away.'],
-  ['random', 'Random', 'Makes random (but legal) moves.'],
-  ['confusing', 'Confusing', 'Plays like a sensible player on a very strange day: generous koehandel offers, lowball offers it lets slide, paying with big notes, bidding up animals it does not need. It is not trying to lose, but its gifts shift the money around the table in ways nobody sees coming. Expect the unexpected.'],
-];
+// The bots a host can add (kept here, not imported from the bots, so the bot code stays on the server), with how hard
+// each one is (pips; 0: just for fun).
+const BOTS = [['easy', 'Easy', 1], ['medium', 'Medium', 2], ['hard', 'Hard', 3], ['insane', 'Insane', 4], ['random', 'Random', 0], ['confusing', 'Confusing', 0]];
+const Level = ({ b: [, name, d] }) => (
+  <span className="lvl"><span className="lvl-name">{name}</span>
+    {d ? <span className="pips" aria-label={`difficulty ${d} of 4`}>{[1, 2, 3, 4].map(x => <i key={x} className={x <= d ? 'on' : ''} />)}</span> : <span className="lvl-tag">for fun</span>}
+  </span>
+);
+// A dropdown of bot levels (a list of its own rather than a native select, so Insane can carry its (i)).
+function BotPicker({ value, set }) {
+  const [open, setOpen] = useState(false), ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const off = e => { if (!ref.current?.contains(e.target)) setOpen(false); }, esc = e => e.key === 'Escape' && setOpen(false);
+    addEventListener('pointerdown', off); addEventListener('keydown', esc);
+    return () => { removeEventListener('pointerdown', off); removeEventListener('keydown', esc); };
+  }, [open]);
+  return (
+    <div className={`picker${open ? ' open' : ''}`} ref={ref}>
+      <button type="button" className="picker-btn" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+        <Level b={BOTS.find(b => b[0] === value)} /><span className="caret" aria-hidden>▾</span>
+      </button>
+      {open && <div role="listbox" className="picker-menu">{BOTS.map(b => (
+        <div key={b[0]} className={`picker-row${b[0] === value ? ' on' : ''}`}>
+          <button type="button" role="option" aria-selected={b[0] === value} className="picker-opt" onClick={() => { set(b[0]); setOpen(false); }}><Level b={b} /></button>
+          {b[0] === 'insane' ? <Info label="About Insane">Really hard. It plays every deal to win and rarely makes a mistake: expect to lose most games against it.</Info> : <span className="info-slot" />}
+        </div>))}</div>}
+    </div>
+  );
+}
 function AddBot({ post, full }) {
   const [level, setLevel] = useState('medium');
   return (
     <div className="row addbot">
-      <label className="field">Add a bot
-        <select value={level} onChange={e => setLevel(e.target.value)}>{BOTS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
-      <Info label="About the bot levels"><span className="tip-list">{BOTS.map(([k, n, d]) => <span key={k}><b>{n}:</b> {d}</span>)}</span></Info>
+      <span>Add a bot</span>
+      <BotPicker value={level} set={setLevel} />
       <button className="ghost" disabled={full} onClick={() => post({ type: 'addbot', level })}>Add bot</button>
       {full && <span className="muted">The table is full.</span>}
     </div>

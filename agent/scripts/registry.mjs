@@ -7,15 +7,16 @@ import { shark } from './shark.mjs';
 import OLD from './old_params.mjs';
 
 import { EXPERT } from '../../lib/bots/expert.js';
-import { padder, caller, keen, sniper, hoarder } from './exploiters.mjs';
+import { padder, caller, keen, sniper, hoarder, seller } from './exploiters.mjs';
 import { loadNet, NetModel } from './net.mjs';
 import fs from 'node:fs';
 import { endgameChoice } from './endgame.mjs';
+import { endModelOr } from './endmodel.mjs';
 const named = {
   v2: () => makeAgent({ kind: 'expert', th: EXPERT }),
   v3: () => makeAgent({ kind: 'expert', th: { ...EXPERT, solve: 1, solveK: 13, solveIt: 80, solveEps: 0.04 } }),
   novice: () => novice,
-  padder, caller, keen, sniper, hoarder,
+  padder, caller, keen, sniper, hoarder, seller,
   shark: () => shark,
   hard0: () => makeAgent({ kind: 'smart', th: OLD.hard }),
   medium0: () => makeAgent({ kind: 'smart', th: OLD.hard, noise: 0.5, slip: 0.2 }),
@@ -50,7 +51,14 @@ export function agentFor(spec) {
     const [lv, rest] = spec.split(':'), base = LEVELS[lv] ? LEVELS[lv].spec : extra[lv];
     const over = Object.fromEntries(rest.split(',').map(kv => { const [k, v] = kv.split('='); return [k, +v]; }));
     if (over.endRoll) over.endgame = endgameChoice; // experiment: endgame lookahead (endgame.mjs)
-    a = makeAgent({ ...base, th: { ...base.th, ...over } });
+    if (over.endModel) over.makeModel = endModelOr; // experiment: the endgame played out (endmodel.mjs)
+    // small.k=v: the 20-card value of a setting that is blended by deck size (forDeck in lib/bots/expert.js)
+    const small = { ...(base.th.small || {}) };
+    for (const k of Object.keys(over)) if (k.startsWith('small.')) { small[k.slice(6)] = over[k]; delete over[k]; }
+    // solo.k=v: the value of a setting when all the others are people (th.solo)
+    const solo = { ...(base.th.solo || {}) };
+    for (const k of Object.keys(over)) if (k.startsWith('solo.')) { solo[k.slice(5)] = over[k]; delete over[k]; }
+    a = makeAgent({ ...base, th: { ...base.th, ...over, ...(Object.keys(small).length ? { small } : {}), ...(Object.keys(solo).length ? { solo } : {}) } });
   }
   else throw new Error('unknown agent ' + spec);
   if (cache.size > 200) cache.clear();

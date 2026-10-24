@@ -11,9 +11,10 @@ const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_KV_RES
 const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 // Redis deletes rooms by itself: a game expires 10 minutes after its last move or player heartbeat (so a table
 // everyone left ends and disappears). A finished game is deleted 15 minutes after it ended, so players can still
-// look at the scores, and it leaves the public list after 2 minutes.
-const ACTIVE_TTL = 600, OVER_TTL = 900, LISTED_AFTER_END = 120000;
-const ttlFor = s => (s.phase === 'over' ? OVER_TTL : ACTIVE_TTL);
+// look at the scores, and it leaves the public list after 2 minutes. A paused game is kept for 3 hours: browsers
+// stop polling from a hidden or sleeping tab, so the heartbeat cannot be relied on during a long break.
+const ACTIVE_TTL = 600, PAUSED_TTL = 3 * 3600, OVER_TTL = 900, LISTED_AFTER_END = 120000;
+const ttlFor = s => (s.phase === 'over' ? OVER_TTL : s.paused ? PAUSED_TTL : ACTIVE_TTL);
 
 // A room is stored as "<version>|<json>". A write only lands if the version is still the one we read
 // (version 0 = "must not exist yet", L = "still in the old plain-JSON format"), so simultaneous requests
@@ -173,7 +174,7 @@ export async function GET(req) {
     let { v, tag, s } = await load(room);
     const pi = find(s, tok);
     if (q.get('hb') && pi >= 0 && !s.players[pi].out) { // heartbeat from a seated player
-      await db().beat(K(room), SEEN(room), tok, now, s.phase === 'over' ? 0 : ACTIVE_TTL); // a finished game is not kept alive by people looking at it
+      await db().beat(K(room), SEEN(room), tok, now, s.phase === 'over' ? 0 : ttlFor(s)); // a finished game is not kept alive by people looking at it
       if (s.phase === 'lobby') { const r = await pruneLobby(room, s, now); if (r) ({ v, s } = r, tag = String(v)); }
     }
     const before = JSON.stringify(s);

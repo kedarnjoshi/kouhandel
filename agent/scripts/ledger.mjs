@@ -1,15 +1,15 @@
-// Where does each seat gain and lose? node agent/scripts/ledger.mjs <lineup> [games] [seed]
+// Where does each seat gain and lose? node agent/scripts/ledger.mjs <lineup> [games] [seed] [deck size]
 // Per seat over all games: animals bought at auction and what they cost, income from selling, koehandels as attacker
 // and defender (won/lost, net money), final sets and wins.
 import { newSimGame, rng, settleAuction } from '../../lib/bots/sim.js';
 import { apply, waiting, tick, score, countsOf } from '../../lib/engine.js';
 import { sum, ANIMALS } from '../../lib/rules.js';
 import { agentFor } from './registry.mjs';
-const [lineup, games = 20, seed = 1] = process.argv.slice(2);
+const [lineup, games = 20, seed = 1, size = 40] = process.argv.slice(2);
 const names = lineup.split(lineup.includes(';') ? ';' : ','), agents = names.map(agentFor), n = names.length;
 const T = names.map(() => ({ bought: 0, paid: 0, boughtVal: 0, sold: 0, income: 0, buyback: 0, atkW: 0, atkL: 0, atkNet: 0, defW: 0, defL: 0, defNet: 0, acc: 0, sets: 0, score: 0, wins: 0 }));
 for (let g = 0; g < +games; g++) {
-  const r = rng(+seed * 1000 + g), s = newSimGame(n, 40, r);
+  const r = rng(+seed * 1000 + g), s = newSimGame(n, +size, r);
   for (let step = 0; s.phase !== 'over' && step < 1500; step++) {
     if (s.phase === 'auction' && s.auction.stage === 'bidding') { settleAuction(s, agents, r); continue; }
     const w = waiting(s); if (!w) break;

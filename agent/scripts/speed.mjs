@@ -1,12 +1,12 @@
-// Time per decision for an agent, by kind of decision: node agent/scripts/speed.mjs <agent> [games]
+// Time per decision for an agent, by kind of decision: node agent/scripts/speed.mjs <agent> [games] [players] [deck size]
 import { newSimGame, rng } from '../../lib/bots/sim.js';
 import { apply, waiting, tick } from '../../lib/engine.js';
 import { sum } from '../../lib/rules.js';
 import { agentFor } from './registry.mjs';
-const [name = 'v2', games = 3, players = 4] = process.argv.slice(2);
+const [name = 'v2', games = 3, players = 4, size = 40] = process.argv.slice(2);
 const A = agentFor(name), T = {}, add = (k, t) => { (T[k] ||= []).push(t); };
 for (let g = 0; g < +games; g++) {
-  const r = rng(77 + g), s = newSimGame(+players, 40, r);
+  const r = rng(77 + g), s = newSimGame(+players, +size, r);
   for (let step = 0; s.phase !== 'over' && step < 2500; step++) {
     if (s.phase === 'auction' && s.auction.stage === 'bidding') {
       const a = s.auction, caps = s.players.map((p, j) => { if (j === a.auctioneer) return -1; const t0 = performance.now(), c = A.cap(s, j, r); add('cap', performance.now() - t0); return Math.min(c, sum(p.money)); });
