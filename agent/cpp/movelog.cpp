@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
       newSimGame(s, n, size, r);
       out.push_back("game " + std::to_string(seed) + " " + lineup + " " + std::to_string(size));
       vector<Agent*> ag; for (auto& sp : specs) ag.push_back(reg.get(sp));
-      for (int j = 0; j < n; j++) s.person[j] = ag[j]->isPerson();
+      for (int j = 0; j < n; j++) { s.person[j] = ag[j]->isPerson(); s.gang[j] = ag[j]->isGang(); }
       Log L(out, &r);
       playOut(s, ag.data(), r, 1500, &L);
       for (const HistE& e : s.hist) {

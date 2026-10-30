@@ -2,7 +2,7 @@ import { Redis } from '@upstash/redis';
 import { randomUUID, randomInt } from 'crypto';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import { newGame, newPlayer, apply, tick, view, upgrade, host } from '../../../lib/engine';
+import { newGame, newPlayer, apply, tick, view, upgrade, host, hostAway } from '../../../lib/engine';
 
 
 export const dynamic = 'force-dynamic';
@@ -129,8 +129,9 @@ async function mutate(id, fn, ready) {
 
 // Presence: seated players add hb=1 to a poll at most every 20s. That heartbeat keeps the room alive (see ACTIVE_TTL)
 // and, in the lobby, frees the seats of players who stopped polling. Closing the tab sends a "bye" that makes the
-// seat expire after a short grace period (so a page refresh keeps it).
-const SEEN = id => K(id) + ':seen', LOBBY_TIMEOUT = 90000, BYE_GRACE = 8000;
+// seat expire after a short grace period (so a page refresh keeps it). In a paused game, a host without a heartbeat
+// for HOST_AWAY passes the host role on (else nobody could resume); any move of theirs takes it back.
+const SEEN = id => K(id) + ':seen', LOBBY_TIMEOUT = 90000, BYE_GRACE = 8000, HOST_AWAY = 60000;
 async function pruneLobby(id, s, now) {
   if (s.phase !== 'lobby' || s.players.length < 2) return null;
   const seen = await db().hgetall(SEEN(id));
@@ -144,6 +145,16 @@ async function pruneLobby(id, s, now) {
   });
   await db().hdel(SEEN(id), ...stale);
   return r;
+}
+async function passHost(id, s, now) {
+  const h = host(s);
+  if (h < 0) return null;
+  const tok = s.players[h].token, seen = await db().hgetall(SEEN(id));
+  if (now - Number(seen[tok] || 0) <= HOST_AWAY) return null;
+  return mutate(id, x => {
+    const k = host(x);
+    return [x.paused && k >= 0 && x.players[k].token === tok ? hostAway(x, k) : null];
+  });
 }
 
 // Soft per-instance limit so a buggy or malicious client cannot hammer the API (the real client polls far slower).
@@ -176,6 +187,7 @@ export async function GET(req) {
     if (q.get('hb') && pi >= 0 && !s.players[pi].out) { // heartbeat from a seated player
       await db().beat(K(room), SEEN(room), tok, now, s.phase === 'over' ? 0 : ttlFor(s)); // a finished game is not kept alive by people looking at it
       if (s.phase === 'lobby') { const r = await pruneLobby(room, s, now); if (r) ({ v, s } = r, tag = String(v)); }
+      else if (s.paused && pi !== host(s)) { const r = await passHost(room, s, now); if (r) ({ v, s } = r, tag = String(v)); }
     }
     const before = JSON.stringify(s);
     tick(s, Date.now()); // timers and bot moves happen lazily, triggered by whoever looks first

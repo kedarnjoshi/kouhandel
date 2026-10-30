@@ -1,0 +1,7 @@
+hard:person=1 @3p: insane: 0.09 ±0.02 | insane:khPoor=2: 0.11 ±0.03
+person @3p: insane: 0.01 ±0.01 | insane:khPoor=2: 0.03 ±0.01
+x9:person=1 @3p: insane: 0.84 ±0.06 | insane:khPoor=2: 0.86 ±0.06
+x8:person=1 @3p: insane: 0.62 ±0.06 | insane:khPoor=2: 0.61 ±0.06
+hard:shade=1.5,person=1 @3p: insane: 0.09 ±0.02 | insane:khPoor=2: 0.15 ±0.03
+hard:shade=2,person=1 @3p: insane: 0.19 ±0.03 | insane:khPoor=2: 0.12 ±0.03
+done

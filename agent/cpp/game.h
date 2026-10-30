@@ -41,6 +41,7 @@ struct Game {
   double ledger[MAXP] = {0}, mem[MAXP][MAXP] = {{0}}, unc[MAXP][MAXP] = {{0}};
   vector<HistE> hist; bool histCut = false; vector<std::array<int, 3>> khs;
   int32_t seed = 0; long long clock = 0, due = 0; int errors = 0; std::string lastError;
+  bool gang[MAXP] = {false}; // simulations only: seats of th.gang stand-ins (their utility: own win chance + gang x the others' in the gang)
   bool person[MAXP] = {false}; // seats played by people (s.people in the JS; in simulations, specs with th.person)
   std::shared_ptr<TrackState> trk[MAXP]; // the card trackers' state per viewer (tracker.js keeps it in a WeakMap on s)
 };
@@ -301,6 +302,8 @@ struct Agent {
   virtual Bid bid(Game& s, int i, Rng& rand) { return {cap(s, i, rand), 0}; }
   virtual double cap(Game& s, int i, Rng& rand) = 0;
   virtual Move act(Game& s, int i, int what, Rng& rand) = 0;
+  virtual bool isGang() const { return false; }
+  virtual double push(double& sd) const { return 0; } // simulations only: a price-pusher stand-in (th.push), see settleAuction
   virtual bool isPerson() const { return false; } // a stand-in for a person (th.person): the others treat it as one
 };
 // a log of what happened (for checking against the JS, agent/cpp/movelog.mjs)
@@ -317,6 +320,14 @@ inline void settleAuction(Game& s, Agent** agents, Rng& rand, Logger* L = nullpt
     if (L) L->bid(s, j, b);
     double c = jmin(b.cap, isum(s.P[j].money));
     if (c >= 10) { double r = rand(); caps.push_back({std::floor(c / 10) * 10, r, j, jmin(c, truthy(b.open) ? b.open : 0)}); }
+  }
+  // th.push (simulations only): a player who has learned how far the others go bids up to push * their highest limit
+  // (seen with noise pushSd) minus 10, so that they pay (nearly) their limit; it may win at that price if it guessed high
+  double tgt = 0; for (auto& c : caps) { double sd; if (!truthy(agents[c.j]->push(sd)) && c.c > tgt) tgt = c.c; }
+  if (tgt >= 20) for (auto& c : caps) {
+    double sd = 0, f = agents[c.j]->push(sd); if (!truthy(f)) continue;
+    double est = f * tgt * (truthy(sd) ? mexp(sd * std::sqrt(-2 * mlog(1 - rand())) * mcos(6.283185307179586 * rand()) - sd * sd / 2) : 1), m = isum(s.P[c.j].money);
+    double p = jmin(m, std::floor(est / 10) * 10 - 10); if (p > c.c) c.c = p;
   }
   std::stable_sort(caps.begin(), caps.end(), [](const C& x, const C& y) { double d = y.c - x.c; if (truthy(d)) return d < 0; return y.r - x.r < 0; });
   double top = 0;

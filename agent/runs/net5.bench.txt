@@ -1,0 +1,10 @@
+insane:net=5 @3p: x8: 0.99 ±0.07 | x9: 0.79 ±0.06 | hard: 2.07 ±0.07 | shark: 2.71 ±0.04 | xB: 2.20 ±0.06 | insane: 1.01 ±0.07
+insane:net=5,netMix=0.35 @3p: x8: 1.39 ±0.07 | x9: 0.77 ±0.06 | hard: 2.10 ±0.06 | shark: 2.65 ±0.05 | xB: 2.06 ±0.07 | insane: 0.91 ±0.06
+x8 @3p: insane:net=5: 0.70 ±0.06
+x9 @3p: insane:net=5: 1.01 ±0.07
+hard @3p: insane:net=5: 0.21 ±0.04
+xB @3p: insane:net=5: 0.46 ±0.05
+(node:20392) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/mrinc/Desktop/Projects/Bangers/kouhandel/lib/bots/index.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\mrinc\Desktop\Projects\Bangers\kouhandel\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)

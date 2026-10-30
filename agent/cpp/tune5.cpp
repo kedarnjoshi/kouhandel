@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     return out;
   };
   auto specOf = [&](const vector<double>& u) {
-    std::string s = base + ":"; bool first = true;
+    std::string s = base + (base.find(':') == std::string::npos ? ":" : ","); bool first = true; // a base with settings of its own: one list (a second ":" would cut the rest off)
     for (auto& [k, v] : fromUnit(u)) { if (!first) s += ","; first = false; s += k + "=" + jsnum(v); }
     return s;
   };

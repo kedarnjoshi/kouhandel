@@ -355,6 +355,24 @@ describe('lobby presence', () => {
     seen(a)[t[1]] = '0';
     expect((await beat(a, t[0])).players).toHaveLength(3);
   });
+  // A host who paused and then went silent for a minute passes the host role on (else nobody could resume); any
+  // move of theirs takes it back. While the game runs, or while the host is still there, nothing changes.
+  it('passes the host role on when a paused host goes silent', async () => {
+    const a = await create(); const t = await fill(a); await post({ type: 'start', room: a, token: t[0] });
+    seen(a)[t[0]] = String(Date.now() - 70000);
+    expect((await beat(a, t[1])).host).toBe(0); // not paused: the clock will deal with them
+    await post({ type: 'pause', room: a, token: t[0] });
+    seen(a)[t[0]] = String(Date.now() - 50000);
+    expect((await beat(a, t[1])).host).toBe(0); // still within the minute
+    seen(a)[t[0]] = String(Date.now() - 70000);
+    const v = await beat(a, t[1]);
+    expect(v.host).toBe(1); expect(v.players[0].away).toBe(true); expect(v.log[0]).toMatch(/a is away, so b is the host now/);
+    expect((await post({ type: 'resume', room: a, token: t[2] })).body.error).toMatch(/Only the host/);
+    await post({ type: 'pause', room: a, token: t[0] }).then(r => expect(r.body.error).toMatch(/already paused/)); // a failed move changes nothing
+    expect((await peek(a, t[1])).host).toBe(1);
+    expect((await post({ type: 'resume', room: a, token: t[0] })).status).toBe(200); // back: host again, and resumes
+    const w = await peek(a, t[1]); expect(w.host).toBe(0); expect(w.paused).toBeFalsy(); expect(w.players[0].away).toBe(false);
+  });
   // Spectators and unknown tokens cannot send heartbeats.
   it('ignores heartbeats from people without a seat', async () => {
     const a = await create(); await fill(a, ['a', 'b']);

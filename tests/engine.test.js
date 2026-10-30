@@ -879,6 +879,17 @@ describe('random full games with kicks and leaves', () => {
   }
 });
 
+describe('bid trail', () => {
+  // The last four bids are shown, so bids that came and went between two polls (bots answer within a second) do not
+  // look like a player raising their own bid.
+  it('keeps the last four bids, oldest first, in the view', () => {
+    const s = open(['cow']);
+    [[1, 10], [2, 20], [1, 30], [2, 40], [1, 50]].forEach(([p, amt], i) => act(s, p, { type: 'bid', amount: amt }, 1000 + i));
+    expect(view(s, 0).auction.trail).toEqual([[2, 20], [1, 30], [2, 40], [1, 50]]);
+    expect(view(s, 0).auction.mx).toBeUndefined(); // (the per-player maximum stays hidden as before)
+  });
+});
+
 describe('pause', () => {
   // Only the host can pause a running game; while paused nothing happens: no timeouts, no moves.
   it('host pauses: clocks stop and moves are refused', () => {

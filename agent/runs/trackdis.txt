@@ -1,0 +1,3 @@
+insane:trackDis=4 @3p: x9: 0.80 ±0.08 | x8: 1.13 ±0.08 | hard: 2.08 ±0.08 | xB: 2.03 ±0.08 | shark: 2.71 ±0.05 | insane: 0.94 ±0.08 | hard:person=1: 2.14 ±0.08 | person: 2.88 ±0.03
+insane:trackDis=9 @3p: x9: 0.80 ±0.08 | x8: 1.14 ±0.08 | hard: 2.11 ±0.08 | xB: 1.97 ±0.08 | shark: 2.76 ±0.05 | insane: 0.95 ±0.08 | hard:person=1: 2.14 ±0.08 | person: 2.88 ±0.03
+done

@@ -689,5 +689,29 @@
       "habitsA": 1,
       "habitsAll": 1
     }
+  },
+  "insB": {
+    "kind": "expert",
+    "th": {
+      "tau": 1.432,
+      "tau1": 68.93,
+      "rho": 1.289,
+      "gamma": 1.106,
+      "delta": 0.6,
+      "mu": 508.3,
+      "mDec": 0.02,
+      "shade": 1.15,
+      "muScale": 1,
+      "solve": 1,
+      "solveK": 13,
+      "solveIt": 80,
+      "solveEps": 0.04,
+      "habits": 0.3,
+      "style": 0.3,
+      "open": 1,
+      "sharp": 1,
+      "padCost": 0.5,
+      "allIn": 1
+    }
   }
 }

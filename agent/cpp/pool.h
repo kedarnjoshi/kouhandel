@@ -15,7 +15,7 @@ inline GameResult playGame(Registry& reg, const GameJob& g) {
   Rng r((uint32_t)g.seed); Game s; int n = (int)g.specs.size();
   newSimGame(s, n, g.size ? g.size : 40, r);
   vector<Agent*> ag; for (auto& sp : g.specs) ag.push_back(reg.get(sp));
-  for (int j = 0; j < n; j++) s.person[j] = ag[j]->isPerson();
+  for (int j = 0; j < n; j++) { s.person[j] = ag[j]->isPerson(); s.gang[j] = ag[j]->isGang(); }
   GameResult res; res.scores = playOut(s, ag.data(), r);
   res.wins = wins(res.scores); res.done = s.phase == PH_OVER; res.errors = s.errors; res.lastError = s.lastError;
   return res;

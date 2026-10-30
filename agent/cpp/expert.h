@@ -77,6 +77,10 @@ inline void look(Game& s, int i, const Th* th, Obs& o) { PROF("look");
       o.track = tr; bool two = (*th)[T_track] == 2;
       for (int j : others) {
         double vl = o.sdS[j] * o.sdS[j] + 100, vt = tr->sd[j] * tr->sd[j] + 100;
+        // trackDis: a tracker that disagrees with the ledger by more than trackDis combined variances has lost the
+        // truth for j (its guesses collapsed onto a wrong one): its doubt grows by the disagreement, its hands are unused
+        if (th->t(T_trackDis)) { double d = tr->mean[j] - o.money[j]; if (d * d > (*th)[T_trackDis] * (vl + vt)) { vt += d * d; o.trackOff[j] = true; } }
+        if (getenv("TRACKDBG")) { double d = tr->mean[j] - o.money[j], real = 0; for (int c : s.P[j].money) real += c; fprintf(stderr, "TD %.0f %.0f %.0f %.0f %.0f %d\n", d, tr->sd[j], std::sqrt(vl), tr->mean[j] - real, o.money[j] - real, o.deckLeft); }
         double m = two ? tr->mean[j] : (o.money[j] / vl + tr->mean[j] / vt) / (1 / vl + 1 / vt), v = two ? vt - 100 : 1 / (1 / vl + 1 / vt) - 100;
         o.money[j] = jround(m); o.sdS[j] = std::sqrt(jmax(0, v)); o.sd[j] = std::sqrt(jmax(25, v));
       }
@@ -561,7 +565,7 @@ inline std::unique_ptr<solver::Game> koehandelGame(const Obs& o, const Th& th, M
   bool ties = o.hasTrade && o.tties; double floor = o.hasTrade && o.hasTieAt ? o.tieAt : 0;
   bool sh = th.t(T_sharp); const double* sd = sh ? o.sdS : o.sd;
   auto theirs = [&](int j, double est, double s0) {
-    if (th.t(T_trackHands) && o.track) { vector<std::pair<Hand, double>> hs; o.track->hands(j, K, rand, hs); vector<WHand> out; for (auto& [h, w] : hs) out.push_back({h, w}); return out; }
+    if (th.t(T_trackHands) && o.track && !o.trackOff[j]) { vector<std::pair<Hand, double>> hs; o.track->hands(j, K, rand, hs); vector<WHand> out; for (auto& [h, w] : hs) out.push_back({h, w}); return out; }
     return guessHands(o.unseen, o.cards[j], est, rand, K, s0, sh);
   };
   vector<int> all = o.unseen; all.insert(all.end(), o.hand.begin(), o.hand.end());
@@ -680,6 +684,8 @@ class ExpertAgent : public Agent {
   ExpertAgent(const Th& th, double noise_ = 0, double slip_ = 0) : th0(th), noise(noise_), slip(slip_) {}
   bool hasBid() const override { return true; }
   bool isPerson() const override { return th0.t(T_person); }
+  bool isGang() const override { return th0.t(T_gang); }
+  double push(double& sd) const override { sd = th0.z(T_pushSd); return th0.z(T_push); }
   double blur(double x, Rng& rand) { return truthy(noise) ? x * mexp(noise * gauss(rand) - noise * noise / 2) : x; }
   void seat(const Game& s, int i, Th& th, bool& hasY, Style& y) {
     int size = s.deckSize;
@@ -742,6 +748,9 @@ class ExpertAgent : public Agent {
     }
     if (th.t(T_acceptP) && rand() < th[T_acceptP]) return mvType(MV_ACCEPT); // a stand-in for people who always accept
     auto yv = th.t(T_solve) ? solvedCounter(o, th, M, rand) : planCounter(o, th, M, rand);
+    // capSure: never counter more than what surely beats the attacker's whole money (my estimate plus
+    // capSure doubts); more only hands the attacker money
+    if (yv.first && th.t(T_capSure)) { double lim = o.money[o.ta] + th[T_capSure] * o.sd[o.ta]; for (int v : sums(o.hand)) if (v > lim) { if (v < yv.second) yv.second = v; break; } }
     if (yv.first && truthy(noise)) {
       double found = NaN; bool f = false;
       for (int v : sums(o.hand)) if (v >= jmax(10, tens(blur(yv.second, rand)))) { found = v; f = true; break; }

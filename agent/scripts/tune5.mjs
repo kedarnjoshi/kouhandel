@@ -13,7 +13,7 @@ const SPACE = paramsArg.split(',').map(p => { const [k, lo, hi, lg] = p.split(':
 const N = SPACE.length, DEALS = +(process.env.DEALS || 40), lambda = +(process.env.LAMBDA || 10), field = fieldArg.split(';');
 const sizes = sizesArg.split(',').map(Number), players = playersArg.split(',').map(Number);
 const fromUnit = u => SPACE.map(([k, lo, hi, lg], i) => { const x = Math.min(1, Math.max(0, u[i])); return [k, +(lg ? lo * Math.pow(hi / lo, x) : lo + (hi - lo) * x).toPrecision(3)]; });
-const specOf = u => `${base}:${fromUnit(u).map(([k, v]) => `${k}=${v}`).join(',')}`;
+const specOf = u => `${base}${base.includes(':') ? ',' : ':'}${fromUnit(u).map(([k, v]) => `${k}=${v}`).join(',')}`; // a base with settings of its own: one list
 const gauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
 // start: START=k=v,... (default the middle of each range)
 const start = Object.fromEntries((process.env.START || '').split(',').filter(Boolean).map(kv => kv.split('=')).map(([k, v]) => [k, +v]));

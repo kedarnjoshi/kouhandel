@@ -239,7 +239,7 @@ struct Registry {
     else {
       auto c = spec.find(':'); std::string lv = spec.substr(0, c);
       if (c == std::string::npos || (!levels.count(lv) && !extra.count(lv))) throw std::runtime_error("unknown agent " + spec);
-      std::string rest = spec.substr(c + 1); auto c2 = rest.find(':'); if (c2 != std::string::npos) rest = rest.substr(0, c2);
+      std::string rest = spec.substr(c + 1); if (rest.find(':') != std::string::npos) throw std::runtime_error("spec " + spec + ": overrides are comma-separated (one colon)");
       Spec base = levels.count(lv) ? levels[lv] : extra[lv];
       Th small = base.th.small ? *base.th.small : Th(); bool anySmall = (bool)base.th.small;
       Th solo = base.th.solo ? *base.th.solo : Th(); bool anySolo = (bool)base.th.solo;

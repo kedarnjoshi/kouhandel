@@ -1,0 +1,1 @@
+insane:paranoid=1 @3p: hard: 1.99 ±0.08 | x9: 0.91 ±0.08 | insane: 1.05 ±0.08 | hard:gang=0.3: 1.63 ±0.09 | hard:gang=1: 0.42 ±0.06 | hard:push=1,pushSd=0.15: 1.30 ±0.09

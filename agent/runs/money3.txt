@@ -1,0 +1,4 @@
+insane:deltaEnd=0.8 @3p: x9: 0.90 ±0.08 | x8: 1.36 ±0.09 | hard: 2.17 ±0.08 | xB: 2.06 ±0.08 | shark: 2.73 ±0.05 | insane: 0.92 ±0.08
+insane:deltaEnd=1.2 @3p: x9: 1.03 ±0.08 | x8: 1.39 ±0.09 | hard: 2.10 ±0.08 | xB: 1.74 ±0.09 | shark: 2.64 ±0.06 | insane: 1.02 ±0.08
+insane:deltaEnd=1.7 @3p: x9: 1.08 ±0.08 | x8: 1.58 ±0.09 | hard: 1.97 ±0.08 | xB: 1.68 ±0.09 | shark: 2.50 ±0.06 | insane: 1.05 ±0.08
+insane:deltaEnd=2.2 @3p: x9: 1.19 ±0.08 | x8: 1.30 ±0.09 | hard: 1.99 ±0.08 | xB: 1.69 ±0.09 | shark: 2.33 ±0.07 | insane: 1.22 ±0.09

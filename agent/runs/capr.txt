@@ -1,0 +1,2 @@
+insane:capR=1.2 @3p: hard:push=1: 1.37 ±0.09 | x9:push=1: 0.14 ±0.04 | x9:push=1,pushSd=0.15: 0.20 ±0.04 | hard: 2.00 ±0.08 | x9: 0.73 ±0.07 | insane: 1.00 ±0.08 | xB: 2.12 ±0.08
+insane:capR=1.5 @3p: hard:push=1: 1.21 ±0.08 | x9:push=1: 0.16 ±0.04 | x9:push=1,pushSd=0.15: 0.20 ±0.04 | hard: 2.03 ±0.08 | x9: 0.75 ±0.07 | insane: 1.00 ±0.08 | xB: 2.13 ±0.08

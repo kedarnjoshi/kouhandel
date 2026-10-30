@@ -1,0 +1,5 @@
+insane @3p: x9: 0.81 ±0.08 | x8: 1.14 ±0.08 | hard: 2.09 ±0.08 | xB: 2.11 ±0.08 | shark: 2.74 ±0.05 | insane: 1.00 ±0.08 | hard:person=1: 2.13 ±0.08 | person: 2.90 ±0.03 | hard:shade=1.5,person=1: 2.20 ±0.08 | hard:shade=2,person=1: 2.38 ±0.07
+insane:khPoor=2 @3p: x9: 0.82 ±0.08 | x8: 1.15 ±0.08 | hard: 2.16 ±0.08 | xB: 1.98 ±0.08 | shark: 2.56 ±0.06 | insane: 0.83 ±0.08 | hard:person=1: 2.20 ±0.08 | person: 2.92 ±0.03 | hard:shade=1.5,person=1: 2.33 ±0.07 | hard:shade=2,person=1: 2.35 ±0.07
+insane:khPoor=1 @3p: x9: 0.81 ±0.08 | x8: 1.13 ±0.08 | hard: 2.19 ±0.08 | xB: 1.97 ±0.08 | shark: 2.54 ±0.06 | insane: 0.82 ±0.08 | hard:person=1: 2.18 ±0.08 | person: 2.93 ±0.03 | hard:shade=1.5,person=1: 2.31 ±0.07 | hard:shade=2,person=1: 2.31 ±0.07
+insane:khBiasP=0 @3p: x9: 0.81 ±0.08 | x8: 1.14 ±0.08 | hard: 2.09 ±0.08 | xB: 2.11 ±0.08 | shark: 2.74 ±0.05 | insane: 1.00 ±0.08 | hard:person=1: 2.11 ±0.08 | person: 2.92 ±0.03 | hard:shade=1.5,person=1: 2.28 ±0.07 | hard:shade=2,person=1: 2.31 ±0.07
+done

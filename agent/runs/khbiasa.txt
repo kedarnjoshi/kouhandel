@@ -1,0 +1,2 @@
+insane:khBiasA=0.6 @3p: x8: 1.10 ±0.08 | x9: 0.68 ±0.07 | hard: 2.04 ±0.08 | xB: 2.07 ±0.08 | insane: 0.98 ±0.08 | person: 2.90 ±0.03 | hard:person=1|person: 2.34 ±0.07
+insane:khBiasA=1.5 @3p: x8: 1.05 ±0.08 | x9: 0.70 ±0.07 | hard: 2.04 ±0.08 | xB: 2.01 ±0.08 | insane: 0.94 ±0.08 | person: 2.90 ±0.03 | hard:person=1|person: 2.28 ±0.07

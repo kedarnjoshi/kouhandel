@@ -1,0 +1,8 @@
+hard:person=1 @3p: insane: 0.09 ±0.02
+hard:shade=1.3:person=1 @3p: insane: 0.12 ±0.03
+hard:shade=1.6:person=1 @3p: insane: 0.15 ±0.03
+hard:shade=2:person=1 @3p: insane: 0.22 ±0.04
+done
+hard:shade=2:person=1 @3p: insane:khBiasP=0: 0.22 ±0.04
+hard:shade=2:person=1 @3p: insane:khBiasP=-0.3: 0.22 ±0.04
+done2

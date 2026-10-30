@@ -15,10 +15,11 @@ struct Obs {
   int deckLeft = 0, deckSize = 40; int mules = 0, turn = 0;
   bool hasAuction = false; int ak = 0, aA = 0; bool hasHigh = false; int highP = 0, highAmt = 0; int aStage = 0;
   bool hasTrade = false; int ta = 0, tb = 0, tk = 0, tcount = 0, toffer = -1, tties = 0; bool hasTieAt = false; double tieAt = 0;
+  int viewer = -1; // whose observation this is (asSeenBy keeps it)
   const Game* g = nullptr; // khs and hist (observe hides the amounts of others' koehandels; every reader here respects that)
   // look()
   vector<int> unseen; double sd[MAXP] = {0}, sdBy[MAXP] = {0}, sdS[MAXP] = {0}, sdSBy[MAXP] = {0}, seenAs[MAXP] = {0};
-  bool hasFuture = false; double future = 0; bool hasKeen = false; double keen[MAXP]; std::shared_ptr<TrackRes> track;
+  bool hasFuture = false; double future = 0; bool hasKeen = false; double keen[MAXP]; std::shared_ptr<TrackRes> track; bool trackOff[MAXP] = {false};
 };
 
 // Smaller decks: the compositions (2-4 of each type, adding up to the size) that fit what was drawn.
@@ -54,7 +55,7 @@ inline void expectedRemaining(int size, const int* seen, double* res) {
 }
 
 inline void observe(const Game& s, int i, Obs& o) { PROF("observe");
-  o = Obs(); o.g = &s; o.me = i; o.n = s.n;
+  o = Obs(); o.g = &s; o.me = i; o.viewer = i; o.n = s.n;
   for (int j = 0; j < s.n; j++) for (int k = 0; k < NT; k++) o.herd[j][k] = s.P[j].animals[k];
   for (int k = 0; k < NT; k++) { int n = s.hasAuction && s.au.type == k ? 1 : 0; for (int j = 0; j < s.n; j++) n += o.herd[j][k]; o.seen[k] = n; }
   o.hand = s.P[i].money; int mine = isum(o.hand);
@@ -188,6 +189,7 @@ class NetModel {
     return score(me, buf, money);
   }
   // the player network on the summed type embeddings and the money: player me's chance to win
+  unsigned ally = 0; double allyW = 1; // th.gang: the seats whose chances count as mine (times allyW) when me is one of them
   double score(int me, const double* sums, const double* money) const {
     const int E = net.E;
     double z[MAXP], mx = -INF, p[256], h1[256], h2[256], zo[1];
@@ -204,7 +206,8 @@ class NetModel {
       z[j] = zo[0] / T; if (z[j] > mx) mx = z[j];
     }
     double tot = 0, mine = 0;
-    for (int j = 0; j < n; j++) if (alive[j]) { double e = mexp(z[j] - mx); tot += e; if (j == me) mine = e; }
+    const unsigned us = (ally >> me) & 1 ? ally : 1u << me;
+    for (int j = 0; j < n; j++) if (alive[j]) { double e = mexp(z[j] - mx); tot += e; if (j == me) mine += e; else if ((us >> j) & 1) mine += allyW * e; }
     return mine / tot;
   }
 };
@@ -213,19 +216,30 @@ class NetModel {
 class Model {
  public:
   double mix = 1; std::shared_ptr<NetModel> nm; // th.net: the learned model instead of this formula, where a network for this table exists
-  int n; double gamma, delta, mu, tau, tau1, own; bool hasOwn;
+  int n; double gamma, delta, mu, tau, tau1, own; bool hasOwn; unsigned ally = 0; double allyW = 1;
   unsigned char alive[MAXP]; double money[MAXP], herd[MAXP * NT], share[NT], powTab[NT * 6], bp[MAXP * NT], mf0[MAXP];
   vector<double> mfTab;
   Model(const Obs& o, const Th& th) { PROF("Model");
     if (th.t(T_net)) { auto it = NETS().find((int)jround(th[T_net])); if (it != NETS().end() && it->second.n == o.n && (!it->second.size || it->second.size == o.deckSize)) nm = std::make_shared<NetModel>(o, it->second, th.t(T_netT) ? th[T_netT] : 1); }
     if (th.h(T_netMix)) mix = th[T_netMix];
+    if (th.t(T_gang) && o.g) { for (int j = 0; j < o.n; j++) if (o.g->gang[j]) ally |= 1u << j; allyW = jmin(1, th[T_gang]); }
+    // paranoid (prototype): the others are predicted as if they played together against me (a gang of weight paranoid)
+    if (th.t(T_paranoid) && o.viewer >= 0) { for (int j = 0; j < o.n; j++) if (j != o.viewer) ally |= 1u << j; allyW = jmin(1, th[T_paranoid]); }
+    if (nm) { nm->ally = ally; nm->allyW = allyW; }
     n = o.n; int m = std::max(1, o.nact);
     gamma = th[T_gamma]; delta = th[T_delta];
     mu = th[T_mu] + th.z(T_kappa) * (o.hasFuture ? (truthy(o.future) ? o.future : 0) : 0);
     if (th.t(T_muScale)) mu *= (o.pool / m + muleMoneyLeft(o)) / 940;
     double left = o.deckSize ? (double)o.deckLeft / o.deckSize : 1;
     if (th.h(T_muEnd)) mu *= th[T_muEnd] + (1 - th[T_muEnd]) * left;
-    if (th.h(T_deltaEnd)) delta = th[T_deltaEnd] + (th[T_delta] - th[T_deltaEnd]) * left;
+    if (th.h(T_deltaEnd)) {
+      double de = th[T_deltaEnd];
+      // deltaPoor (prototype): the end value of the money exponent when poorer than the richest other (by poorM or more;
+      // in between a straight line): money decides the endgame fights, so it is worth more while behind
+      if (th.h(T_deltaPoor)) { double mx = 0; for (int j = 0; j < o.n; j++) if (j != o.me && !o.out[j]) mx = jmax(mx, o.money[j]);
+        double w = jmin(1, jmax(0, (mx - o.money[o.me]) / (th.h(T_poorM) ? th[T_poorM] : 300))); de += w * (th[T_deltaPoor] - de); }
+      delta = de + (th[T_delta] - de) * left;
+    }
     tau = th[T_tau]; tau1 = th[T_tau1]; hasOwn = th.t(T_own); own = th[T_own];
     for (int j = 0; j < n; j++) { alive[j] = o.out[j] ? 0 : 1; money[j] = jmax(0, o.money[j]); }
     for (int k = 0; k < NT; k++) {
@@ -280,7 +294,8 @@ class Model {
     for (int j = 0; j < n; j++) if (alive[j]) { double e = A[j] * B[j] - C[j] + A[j]; E[j] = e; mean += e; cnt++; if (e > mx) mx = e; }
     double itau = 1 / (tau * (mean / (cnt ? cnt : 1) + tau1));
     double z = 0, mine = 0;
-    for (int j = 0; j < n; j++) if (alive[j]) { double e = mexp((E[j] - mx) * itau); z += e; if (j == me) mine = e; }
+    const unsigned us = (ally >> me) & 1 ? ally : 1u << me;
+    for (int j = 0; j < n; j++) if (alive[j]) { double e = mexp((E[j] - mx) * itau); z += e; if (j == me) mine += e; else if ((us >> j) & 1) mine += allyW * e; }
     if (hasOwn) return mine / z + own * jmax(0, E[me]) / jmax(1e-9, mean);
     return mine / z;
   }

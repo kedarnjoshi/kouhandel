@@ -48,6 +48,7 @@ export function agentFor(spec) {
   }
   else if (LEVELS[spec]) a = makeAgent(LEVELS[spec].spec);
   else if (LEVELS[spec.split(':')[0]] || extra[spec.split(':')[0]]) { // a level (or named spec) with parameter overrides: insane:shade=1.3,mDec=0.05
+    if (spec.split(':').length > 2) throw new Error(`spec ${spec}: overrides are comma-separated (one colon)`);
     const [lv, rest] = spec.split(':'), base = LEVELS[lv] ? LEVELS[lv].spec : extra[lv];
     const over = Object.fromEntries(rest.split(',').map(kv => { const [k, v] = kv.split('='); return [k, +v]; }));
     if (over.endRoll) over.endgame = endgameChoice; // experiment: endgame lookahead (endgame.mjs)

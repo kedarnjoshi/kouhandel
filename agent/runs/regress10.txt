@@ -1,0 +1,16 @@
+[3p 40] insane @3p: hard: 2.09 ±0.08 | xB: 2.11 ±0.08 | shark: 2.74 ±0.05
+[3p 40] insane @3p: ins8: 1.80 ±0.08 | insB: 1.81 ±0.08
+[3p 20] insane @3p/20: hard: 2.37 ±0.07 | xB: 2.25 ±0.07 | shark: 2.15 ±0.08
+[3p 20] insane @3p/20: ins8: 1.39 ±0.09 | insB: 1.83 ±0.08
+[3p 30] insane @3p/30: hard: 1.97 ±0.08 | xB: 1.67 ±0.09 | shark: 2.35 ±0.07
+[3p 30] insane @3p/30: ins8: 1.29 ±0.09 | insB: 1.41 ±0.09
+[3p 25] insane @3p/25: hard: 2.25 ±0.07 | xB: 1.65 ±0.09 | shark: 2.23 ±0.08
+[3p 25] insane @3p/25: ins8: 0.80 ±0.08 | insB: 1.35 ±0.09
+[4p 40] insane @4p: hard: 2.21 ±0.10 | xB: 2.10 ±0.10 | shark: 3.08 ±0.08
+[4p 40] insane @4p: ins8: 1.25 ±0.09 | insB: 1.69 ±0.10
+[5p 40] insane @5p: hard: 2.33 ±0.11 | xB: 2.38 ±0.11 | shark: 3.44 ±0.10
+[5p 40] insane @5p: ins8: 1.56 ±0.10 | insB: 1.41 ±0.10
+[4p 20] insane @4p/20: hard: 2.89 ±0.09 | xB: 2.48 ±0.10 | shark: 2.23 ±0.10
+[4p 20] insane @4p/20: ins8: 1.01 ±0.09 | insB: 1.92 ±0.10
+[5p 20] insane @5p/20: hard: 3.11 ±0.11 | xB: 2.60 ±0.11 | shark: 2.55 ±0.11
+[5p 20] insane @5p/20: ins8: 0.97 ±0.09 | insB: 1.86 ±0.11

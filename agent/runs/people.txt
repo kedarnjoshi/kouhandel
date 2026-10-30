@@ -1,0 +1,16 @@
+[3p] insane @3p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.41 ±0.06
+[4p] insane @4p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.76 ±0.09
+[5p] insane @5p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.79 ±0.11
+[3p] insane:mDecP=1 @3p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.40 ±0.06
+[4p] insane:mDecP=1 @4p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.69 ±0.09
+[5p] insane:mDecP=1 @5p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.77 ±0.11
+[3p] insane:khBiasP=0 @3p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.36 ±0.06
+[4p] insane:khBiasP=0 @4p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.58 ±0.10
+[5p] insane:khBiasP=0 @5p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.65 ±0.11
+[3p] insane:mDecP=1,khBiasP=0 @3p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.46 ±0.05
+[4p] insane:mDecP=1,khBiasP=0 @4p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.47 ±0.10
+[5p] insane:mDecP=1,khBiasP=0 @5p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.67 ±0.11
+[3p] insane:deltaPoor=1.5 @3p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.42 ±0.06
+[4p] insane:deltaPoor=1.5 @4p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.44 ±0.10
+[5p] insane:deltaPoor=1.5 @5p: hard:person=1|hard:shade=1.5,person=1|hard:shade=2,person=1|person: 2.86 ±0.11
+done

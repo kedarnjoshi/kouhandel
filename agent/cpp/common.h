@@ -115,12 +115,13 @@ enum ThKey {
   T_rho, T_gamma, T_delta, T_mu, T_tau, T_tau1, T_eps, T_mBid, T_shade, T_mDec, T_aucM, T_khBias, T_pc, T_gap, T_pad, T_phi, T_mResp,
   T_kappa, T_muScale, T_muEnd, T_deltaEnd, T_own, T_naive, T_style, T_solve, T_solveK, T_solveIt, T_solveEps, T_solvePad, T_habits,
   T_habitsA, T_open, T_openHist, T_openT, T_softCap, T_sharp, T_padCost, T_allIn, T_track, T_trackHands, T_roughK, T_roughIt, T_mDecP,
-  T_adapt, T_shadeK, T_net, T_netT, T_netMix, T_habitsAll, T_acceptP, T_boldP, T_person, T_khBiasP, NK
+  T_adapt, T_shadeK, T_net, T_netT, T_netMix, T_habitsAll, T_acceptP, T_boldP, T_person, T_khBiasP, T_gang, T_push, T_pushSd, T_deltaPoor, T_poorM, T_paranoid, T_capSure, T_trackDis, NK
 };
 const char* const THN[NK] = {"rho", "gamma", "delta", "mu", "tau", "tau1", "eps", "mBid", "shade", "mDec", "aucM", "khBias", "pc", "gap",
                              "pad", "phi", "mResp", "kappa", "muScale", "muEnd", "deltaEnd", "own", "naive", "style", "solve", "solveK",
                              "solveIt", "solveEps", "solvePad", "habits", "habitsA", "open", "openHist", "openT", "softCap", "sharp",
-                             "padCost", "allIn", "track", "trackHands", "roughK", "roughIt", "mDecP", "adapt", "shadeK", "net", "netT", "netMix", "habitsAll", "acceptP", "boldP", "person", "khBiasP"};
+                             "padCost", "allIn", "track", "trackHands", "roughK", "roughIt", "mDecP", "adapt", "shadeK", "net", "netT", "netMix", "habitsAll", "acceptP", "boldP", "person", "khBiasP", "gang", "push", "pushSd", "deltaPoor", "poorM", "paranoid", "capSure", "trackDis"};
+static_assert(NK <= 64, "Th::has holds one bit per key");
 inline int thKey(const std::string& s) { for (int k = 0; k < NK; k++) if (s == THN[k]) return k; return -1; }
 struct Th {
   double v[NK]; uint64_t has = 0; std::shared_ptr<Th> small, solo; // solo: the settings when all the others are people

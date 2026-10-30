@@ -15,13 +15,13 @@ const saveToken = (id, t) => {
 };
 
 // How long to wait before the next poll. Only poll fast when someone else can change the table any moment.
-function pollDelay(g, skew) {
+function pollDelay(g, skew, spent = 0) { // spent: how long the last request took
   if (typeof document !== 'undefined' && document.hidden) return 15000;
   if (!g) return 2000;
   if (g.phase === 'over') return 30000;
   if (g.phase === 'lobby' || g.paused) return 3000;
   const soon = at => Math.max(400, at - (Date.now() + skew) + 300); // look right after a deadline passes
-  if (g.phase === 'auction' && g.auction.stage === 'bidding') return Math.min(g.me === g.auction.auctioneer ? 2500 : 1500, soon(g.auction.deadline));
+  if (g.phase === 'auction' && g.auction.stage === 'bidding') return Math.min(Math.max(0, 500 - spent), soon(g.auction.deadline)); // a look every half second: every bid shows at once
   const mine = g.waiting && g.waiting.p === g.me; // nobody else can move: only check now and then (kicks, the clock)
   return Math.min(mine ? 10000 : 2500, g.due ? soon(g.due) : 10000, g.next ? soon(g.next) : 10000); // next: when a bot moves
 }
@@ -268,6 +268,7 @@ export default function Page() {
     let dead = false, timer, misses = 0, lastV = -1, lastBeat = 0, last = null, slow = 0;
     const load = async () => {
       clearTimeout(timer);
+      const t0 = Date.now();
       const beat = tok && Date.now() - lastBeat > 20000; // seated players say "still here" every 20s
       try {
         const { status, j } = await api(`?room=${encodeURIComponent(room)}&token=${encodeURIComponent(tok)}${beat ? '&hb=1' : ''}`);
@@ -281,7 +282,7 @@ export default function Page() {
           if (!(j.v < lastV)) { lastV = j.v; skew.current = j.now - Date.now(); setG(j); last = j; }
         }
       } catch { if (!dead) setNet('Connection problem, retrying…'); }
-      if (!dead) timer = setTimeout(load, Math.max(slow, pollDelay(last, skew.current)));
+      if (!dead) timer = setTimeout(load, Math.max(slow, pollDelay(last, skew.current, Date.now() - t0)));
     };
     refresh.current = load;
     load();
@@ -413,6 +414,7 @@ export default function Page() {
       <h2>{name(a.auctioneer)} auctions a {nameOf(a.type)} with {ANIMALS[a.type]} points</h2>
       {a.stage === 'bidding' && (<>
         <p className="highbid"><span className="big">{hi ? hi.amt : '—'}</span><span>{hi ? <>highest bid by <b>{name(hi.p)}</b></> : 'no bids yet'}</span></p>
+        {a.trail && a.trail.length > 1 && <p className="muted trail">before: {a.trail.slice(0, -1).reverse().map(([p, amt]) => `${name(p)} ${amt}`).join(' · ')}</p>}
         <div className={`bar${left <= 5 ? ' low' : ''}`}><i style={{ width: `${Math.min(100, left / 20 * 100)}%` }} /><span>{left}s</span></div>
         {isAu ? <div className="row"><button className="ghost" disabled={a.extended || left >= 20} onClick={() => post({ type: 'extend' })}>+5s</button><span className="muted">{a.extended ? 'You already added time. ' : 'You can add 5s once. '}Every bid resets the clock to 10s.</span></div>
           : hi && hi.p === me ? <p className="muted">You are the highest bidder.</p>
@@ -465,7 +467,7 @@ export default function Page() {
         {P.map((p, i) => (
           <div key={i} className={`panel pl${(g.waiting ? g.waiting.p : a?.auctioneer) === i ? ' turn' : ''}${i === me ? ' me' : ''}${p.out ? ' out' : ''}`}>
             <div className="who"><Avatar i={i} name={p.name} /><div className="grow"><b>{p.name}{i === me ? ' (you)' : ''}</b>
-              <span className="muted">{p.out ? 'out of the game · animals up for grabs' : <>{p.bot ? <span className="botTag">{cap(p.bot)} bot</span> : ''}{i === hostIdx ? 'host · ' : ''}{g.phase === 'lobby' ? 'ready' : `${p.cards} money card${p.cards === 1 ? '' : 's'}`}{p.strikes >= 2 ? ` · missed ${p.strikes} moves` : ''}</>}</span></div>
+              <span className="muted">{p.out ? 'out of the game · animals up for grabs' : <>{p.bot ? <span className="botTag">{cap(p.bot)} bot</span> : ''}{i === hostIdx ? 'host · ' : ''}{g.phase === 'lobby' ? 'ready' : `${p.cards} money card${p.cards === 1 ? '' : 's'}`}{p.strikes >= 2 ? ` · missed ${p.strikes} moves` : ''}{p.away ? ' · away' : ''}</>}</span></div>
               {canKick(i) && <button className="ghost small kick" onClick={() => kick(i)}>{g.phase === 'lobby' ? 'Remove' : 'Kick'}</button>}</div>
             <div className="row">{Object.entries(p.animals).filter(([, n]) => n > 0).map(([k, n]) => <Animal key={k} t={k} small badge={n} gold={!!g.counts && n === g.counts[k]} />)}</div>
           </div>

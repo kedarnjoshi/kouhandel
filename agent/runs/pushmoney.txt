@@ -1,0 +1,3 @@
+insane:deltaEnd=2.2 @3p: hard:push=1: 1.48 ±0.09 | x9:push=1: 0.56 ±0.07 | x9:push=1,pushSd=0.15: 0.66 ±0.07 | hard:push=1,pushSd=0.15: 1.37 ±0.09
+insane:deltaEnd=0.8,deltaPoor=1.5 @3p: hard:push=1: 1.45 ±0.09 | x9:push=1: 0.30 ±0.05 | x9:push=1,pushSd=0.15: 0.47 ±0.06 | hard:push=1,pushSd=0.15: 1.59 ±0.09
+insane:deltaEnd=1.35 @3p: hard:push=1: 1.61 ±0.09 | x9:push=1: 0.42 ±0.06 | x9:push=1,pushSd=0.15: 0.57 ±0.07 | hard:push=1,pushSd=0.15: 1.76 ±0.08
